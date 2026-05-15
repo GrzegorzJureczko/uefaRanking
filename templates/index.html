@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>League Standings with UEFA Points</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .error {
+            background: #fee;
+            border: 1px solid #fcc;
+            padding: 15px;
+            border-radius: 5px;
+            color: #c33;
+            margin-bottom: 20px;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        th {
+            padding: 18px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #764ba2;
+        }
+
+        td {
+            padding: 16px 18px;
+            border-bottom: 1px solid #eee;
+            color: #333;
+        }
+
+        tbody tr {
+            transition: background-color 0.2s;
+        }
+
+        tbody tr:hover {
+            background-color: #f8f9ff;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .position {
+            font-weight: bold;
+            color: #667eea;
+            width: 50px;
+            text-align: center;
+        }
+
+        .club-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .stat-cell {
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .points {
+            background: #f0f0f0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .season-points {
+            color: #667eea;
+        }
+
+        .uefa-points {
+            color: #764ba2;
+        }
+
+        .not-matched {
+            color: #999;
+            font-style: italic;
+        }
+
+        .legend {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .legend h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .legend-item {
+            display: inline-block;
+            margin-right: 30px;
+            margin-bottom: 10px;
+        }
+
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            th, td {
+                padding: 12px;
+                font-size: 0.9em;
+            }
+
+            table {
+                font-size: 0.85em;
+            }
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading::after {
+            content: "...";
+            animation: dots 1.5s steps(3, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: "."; }
+            40% { content: ".."; }
+            60%, 100% { content: "..."; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚽ League Standings with UEFA Points</h1>
+            <p>Current Season Performance & UEFA Competition Ranking</p>
+        </div>
+
+        {% if error %}
+        <div class="error">
+            <strong>Error:</strong> {{ error }}
+        </div>
+        {% endif %}
+
+        {% if clubs %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">Pos</th>
+                        <th>Club Name</th>
+                        <th style="width: 80px;">Matches</th>
+                        <th style="width: 60px;">W</th>
+                        <th style="width: 60px;">D</th>
+                        <th style="width: 60px;">L</th>
+                        <th style="width: 80px;">GD</th>
+                        <th style="width: 120px;" class="season-points">Season Pts</th>
+                        <th style="width: 120px;" class="uefa-points">UEFA Pts</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for club in clubs %}
+                    <tr>
+                        <td class="position">{{ club.position }}</td>
+                        <td class="club-name">{{ club.name }}</td>
+                        <td class="stat-cell">{{ club.played }}</td>
+                        <td class="stat-cell">{{ club.wins }}</td>
+                        <td class="stat-cell">{{ club.draws }}</td>
+                        <td class="stat-cell">{{ club.losses }}</td>
+                        <td class="stat-cell">{{ club.goal_diff }}</td>
+                        <td class="points season-points">{{ club.season_points }}</td>
+                        <td class="points uefa-points {% if club.uefa_points == '-' %}not-matched{% endif %}">
+                            {% if club.uefa_points == '-' %}
+                                Not matched
+                            {% else %}
+                                {{ club.uefa_points }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="legend">
+            <h3>📊 Column Descriptions</h3>
+            <div class="legend-item">
+                <span class="legend-color" style="background: #667eea;"></span>
+                <strong>Season Pts:</strong> Points earned in the current league season
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background: #764ba2;"></span>
+                <strong>UEFA Pts:</strong> Total points from UEFA club competitions over 5 years
+            </div>
+            <div style="margin-top: 10px; color: #666;">
+                <strong>Stats:</strong> W = Wins, D = Draws, L = Losses, GD = Goal Difference
+            </div>
+        </div>
+        {% else %}
+        <div class="loading">
+            Loading club data
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
