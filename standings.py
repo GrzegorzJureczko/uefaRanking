@@ -4,13 +4,14 @@ import os
 
 # Credentials for the free-api-live-football-data API
 RAPIDAPI_HOST = "free-api-live-football-data.p.rapidapi.com"
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "aa0f9d7724msh696a52e2cb168ccp128165jsn36e76705848d")
+#RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "aa0f9d7724msh696a52e2cb168ccp128165jsn36e76705848d")
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "0e370235bbmsh2d7db50a7854262p172ee6jsne4135685045b")
 
 
-def get_league_standings(league_id=196):
+def get_league_standings(league_id):
     """
     Fetch league standings from the API
-    league_id=196 corresponds to Premier League
+    league_id: The ID of the league to fetch standings for
     """
     try:
         conn = http.client.HTTPSConnection(RAPIDAPI_HOST)
@@ -24,6 +25,7 @@ def get_league_standings(league_id=196):
         conn.request("GET", f"/football-get-standing-all?leagueid={league_id}", headers=headers)
         
         res = conn.getresponse()
+        print(f"API Response Status: {res.status} {res.reason}")
         data = res.read()
         
         standings = json.loads(data.decode("utf-8"))
@@ -63,13 +65,14 @@ def extract_standings(json_data):
     return standings_list
 
 
-def get_all_standings():
-    """Main function to get all standings data"""
-    standings_data = get_league_standings()
+def get_all_standings(league_id=196):
+    """Main function to get all standings data for a specific league"""
+    standings_data = get_league_standings(league_id)
     return extract_standings(standings_data)
 
 
 if __name__ == "__main__":
-    standings = get_all_standings()
+    print("Fetching league standings...")
+    standings = get_all_standings(196)
     for club in standings:
         print(f"{club['position']}. {club['name']}: {club['points']} pts ({club['played']} matches)")

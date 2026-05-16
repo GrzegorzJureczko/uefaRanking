@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from ranking import get_uefa_points
 from standings import get_all_standings
 from difflib import SequenceMatcher
@@ -9,6 +9,15 @@ app = Flask(__name__)
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# League configuration with IDs and names
+LEAGUES = {
+    '47': {'name': 'English Premier League', 'code': 'en', 'id': 47},
+    '87': {'name': 'Spanish La Liga', 'code': 'es', 'id': 87},
+    '122': {'name': 'Czech First League', 'code': 'cz', 'id': 122},
+    '71': {'name': 'Turkish Super League', 'code': 'tr', 'id': 71},
+    '196': {'name': 'Polish Ekstraklasa', 'code': 'pl', 'id': 196},
+}
 
 
 def fuzzy_match_clubs(uefa_clubs, standings_clubs):
@@ -50,7 +59,19 @@ def merge_club_data(uefa_points, standings_data):
     for club in standings_data:
         club_name = club['name']
         uefa_club_name = club_mapping.get(club_name)
-        
+
+        # Default UEFA values when not matched
+        uefa_total = '-'
+        uefa_years = {}
+        if uefa_club_name:
+            uefa_val = uefa_points.get(uefa_club_name)
+            if isinstance(uefa_val, dict):
+                uefa_total = uefa_val.get('total', '-')
+                uefa_years = uefa_val.get('years', {})
+            else:
+                # backward compatibility if it's a scalar
+                uefa_total = uefa_val
+
         merged_club = {
             'position': club['position'],
             'name': club_name,
@@ -63,7 +84,8 @@ def merge_club_data(uefa_points, standings_data):
             'goals_against': club['goals_against'],
             'goal_diff': club['goal_diff'],
             'season_points': club['points'],
-            'uefa_points': uefa_points.get(uefa_club_name, '-'),
+            'uefa_points_total': uefa_total,
+            'uefa_points_years': uefa_years,
             'matched': uefa_club_name is not None
         }
         merged_data.append(merged_club)
@@ -72,20 +94,35 @@ def merge_club_data(uefa_points, standings_data):
 
 
 @app.route("/")
-def hello_world():
+def index():
+    """Show league selector"""
     try:
-        logger.info("Fetching data...")
+        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[])
+    except Exception as e:
+        logger.error(f"Error in index: {e}", exc_info=True)
+        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], error=str(e))
+
+
+@app.route("/league/<league_id>")
+def league_standings(league_id):
+    """Show standings for a specific league"""
+    try:
+        if league_id not in LEAGUES:
+            return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], 
+                                 error="Invalid league selected")
+        
+        logger.info(f"Fetching data for league {LEAGUES[league_id]['name']}...")
         
         # Fetch both datasets
         uefa_points = get_uefa_points()
-        standings = get_all_standings()
+        standings = get_all_standings(int(league_id))
         
         if not uefa_points:
             logger.warning("Failed to fetch UEFA points")
             uefa_points = {}
         
         if not standings:
-            logger.warning("Failed to fetch standings")
+            logger.warning(f"Failed to fetch standings for league {league_id}")
             standings = []
         
         # Merge the data
@@ -93,19 +130,24 @@ def hello_world():
         
         logger.info(f"Successfully fetched and merged data for {len(merged_data)} clubs")
         
-        return render_template("index.html", clubs=merged_data)
+        return render_template("index.html", clubs=merged_data, leagues=LEAGUES, 
+                             selected_league=league_id, league_name=LEAGUES[league_id]['name'])
     
     except Exception as e:
-        logger.error(f"Error in hello_world: {e}", exc_info=True)
-        return render_template("index.html", clubs=[], error=str(e))
+        logger.error(f"Error in league_standings: {e}", exc_info=True)
+        return render_template("index.html", leagues=LEAGUES, selected_league=league_id, 
+                             clubs=[], error=str(e))
 
 
-@app.route("/api/clubs")
-def get_clubs_api():
-    """API endpoint to get clubs data as JSON"""
+@app.route("/api/clubs/<league_id>")
+def get_clubs_api(league_id):
+    """API endpoint to get clubs data as JSON for a specific league"""
     try:
+        if league_id not in LEAGUES:
+            return jsonify({"error": "Invalid league ID"}), 400
+        
         uefa_points = get_uefa_points()
-        standings = get_all_standings()
+        standings = get_all_standings(int(league_id))
         
         if not uefa_points:
             uefa_points = {}
@@ -113,7 +155,10 @@ def get_clubs_api():
             standings = []
         
         merged_data = merge_club_data(uefa_points, standings)
-        return jsonify(merged_data)
+        return jsonify({
+            "league": LEAGUES[league_id],
+            "clubs": merged_data
+        })
     
     except Exception as e:
         logger.error(f"Error in get_clubs_api: {e}", exc_info=True)

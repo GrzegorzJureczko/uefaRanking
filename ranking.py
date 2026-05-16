@@ -21,7 +21,12 @@ def ExtractRanking(json_data):
     
     ranking_dict = {}
     for club in json_data['rows']:
-        ranking_dict[club['club']] = club['total']
+        # Keep total and per-year breakdown if available
+        years = club.get('years', {}) if isinstance(club.get('years', {}), dict) else {}
+        ranking_dict[club['club']] = {
+            'total': club.get('total', 0),
+            'years': years
+        }
     return ranking_dict
 
 

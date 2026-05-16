@@ -43,6 +43,52 @@
             font-size: 1.1em;
         }
 
+        .league-selector {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .league-selector h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .league-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+        }
+
+        .league-btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f0f0f0;
+            color: #333;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .league-btn:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .league-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
         .error {
             background: #fee;
             border: 1px solid #fcc;
@@ -160,21 +206,6 @@
             vertical-align: middle;
         }
 
-        @media (max-width: 768px) {
-            .header h1 {
-                font-size: 1.8em;
-            }
-
-            th, td {
-                padding: 12px;
-                font-size: 0.9em;
-            }
-
-            table {
-                font-size: 0.85em;
-            }
-        }
-
         .loading {
             text-align: center;
             padding: 40px;
@@ -191,6 +222,25 @@
             40% { content: ".."; }
             60%, 100% { content: "..."; }
         }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .league-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            th, td {
+                padding: 12px;
+                font-size: 0.9em;
+            }
+
+            table {
+                font-size: 0.85em;
+            }
+        }
     </style>
 </head>
 <body>
@@ -198,6 +248,18 @@
         <div class="header">
             <h1>⚽ League Standings with UEFA Points</h1>
             <p>Current Season Performance & UEFA Competition Ranking</p>
+        </div>
+
+        <div class="league-selector">
+            <h3>📊 Select a League:</h3>
+            <div class="league-buttons">
+                {% for league_id, league_info in leagues.items() %}
+                <a href="/league/{{ league_id }}" 
+                   class="league-btn {% if selected_league == league_id %}active{% endif %}">
+                    {{ league_info.name }}
+                </a>
+                {% endfor %}
+            </div>
         </div>
 
         {% if error %}
@@ -219,7 +281,7 @@
                         <th style="width: 60px;">L</th>
                         <th style="width: 80px;">GD</th>
                         <th style="width: 120px;" class="season-points">Season Pts</th>
-                        <th style="width: 120px;" class="uefa-points">UEFA Pts</th>
+                        <th style="width: 160px;" class="uefa-points">UEFA Pts (5yr)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -233,11 +295,16 @@
                         <td class="stat-cell">{{ club.losses }}</td>
                         <td class="stat-cell">{{ club.goal_diff }}</td>
                         <td class="points season-points">{{ club.season_points }}</td>
-                        <td class="points uefa-points {% if club.uefa_points == '-' %}not-matched{% endif %}">
-                            {% if club.uefa_points == '-' %}
-                                Not matched
+                        <td class="points uefa-points {% if club.uefa_points_total == '-' %}not-matched{% endif %}">
+                            {% if club.uefa_points_total == '-' %}
+                                0
                             {% else %}
-                                {{ club.uefa_points }}
+                                <div style="font-weight:700">{{ club.uefa_points_total }}</div>
+                                {% if club.uefa_points_years %}
+                                <div style="font-size:0.8em; color:#777; margin-top:4px">
+                                    ({{ club.uefa_points_years.values() | join(', ') }})
+                                </div>
+                                {% endif %}
                             {% endif %}
                         </td>
                     </tr>
@@ -260,9 +327,13 @@
                 <strong>Stats:</strong> W = Wins, D = Draws, L = Losses, GD = Goal Difference
             </div>
         </div>
-        {% else %}
+        {% elif selected_league %}
         <div class="loading">
             Loading club data
+        </div>
+        {% else %}
+        <div style="background: white; padding: 40px; border-radius: 10px; text-align: center; color: #666;">
+            <p style="font-size: 1.1em;">👆 Select a league from above to view standings and UEFA points</p>
         </div>
         {% endif %}
     </div>
