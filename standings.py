@@ -1,11 +1,17 @@
 import json
 import http.client
 import os
+from cache import get_cache, set_cache
 
 # Credentials for the free-api-live-football-data API
 RAPIDAPI_HOST = "free-api-live-football-data.p.rapidapi.com"
 #RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "aa0f9d7724msh696a52e2cb168ccp128165jsn36e76705848d")
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "0e370235bbmsh2d7db50a7854262p172ee6jsne4135685045b")
+#RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "0e370235bbmsh2d7db50a7854262p172ee6jsne4135685045b")
+#RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "c81b67ec96mshc3e78f464f7789bp160413jsne449a0779d01")
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "2f7b923a4cmsh2e90398598101ebp1bde78jsnda831b16acc4")
+
+
+
 
 
 def get_league_standings(league_id):
@@ -30,6 +36,10 @@ def get_league_standings(league_id):
         
         standings = json.loads(data.decode("utf-8"))
         conn.close()
+
+        if isinstance(standings, dict) and standings.get('status') == 'failed':
+            print(f"API reported failure for league {league_id}: {standings.get('message')}")
+            return None
         
         return standings
     except Exception as e:
@@ -67,8 +77,19 @@ def extract_standings(json_data):
 
 def get_all_standings(league_id=196):
     """Main function to get all standings data for a specific league"""
+    # try cache first (1 day TTL)
+    cache_key = f"standings_{league_id}"
+    cached = get_cache(cache_key, ttl_seconds=24*3600)
+    if cached is not None:
+        return cached
+
     standings_data = get_league_standings(league_id)
-    return extract_standings(standings_data)
+    if standings_data is None:
+        return []
+
+    extracted = extract_standings(standings_data)
+    set_cache(cache_key, extracted)
+    return extracted
 
 
 if __name__ == "__main__":

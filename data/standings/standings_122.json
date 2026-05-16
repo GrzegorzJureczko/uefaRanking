@@ -1,0 +1,9 @@
+{
+  "league": {
+    "name": "Czech First League",
+    "code": "cz",
+    "id": 122
+  },
+  "standings": [],
+  "error": "fetch failed"
+}

@@ -3,6 +3,10 @@ from ranking import get_uefa_points
 from standings import get_all_standings
 from difflib import SequenceMatcher
 import logging
+import threading
+import time
+import os
+from cache import clear_cache
 
 app = Flask(__name__)
 
@@ -13,10 +17,25 @@ logger = logging.getLogger(__name__)
 # League configuration with IDs and names
 LEAGUES = {
     '47': {'name': 'English Premier League', 'code': 'en', 'id': 47},
+    '55': {'name': 'Italian Serie A', 'code': 'it', 'id': 55},
     '87': {'name': 'Spanish La Liga', 'code': 'es', 'id': 87},
-    '122': {'name': 'Czech First League', 'code': 'cz', 'id': 122},
+    '54': {'name': 'German Bundesliga', 'code': 'de', 'id': 54},
+    '53': {'name': 'French Ligue 1', 'code': 'fr', 'id': 53},
+    '61': {'name': 'Portuguese Liga Portugal', 'code': 'pt', 'id': 61},
+    '57': {'name': 'Dutch Eredivisie', 'code': 'nl', 'id': 57},
+    '40': {'name': 'Belgian First Division A', 'code': 'be', 'id': 40},
     '71': {'name': 'Turkish Super League', 'code': 'tr', 'id': 71},
+    '122': {'name': 'Czech First League', 'code': 'cz', 'id': 122},
+    '135': {'name': 'Greek Super League 1', 'code': 'gr', 'id': 135},
     '196': {'name': 'Polish Ekstraklasa', 'code': 'pl', 'id': 196},
+    '46': {'name': 'Danish Superligaen', 'code': 'dk', 'id': 46},
+    '59': {'name': 'Norwegian Eliteserien', 'code': 'no', 'id': 59},
+    '136': {'name': 'Cypriot 1. Division', 'code': 'cy', 'id': 136},
+    '69': {'name': 'Swiss Super League', 'code': 'ch', 'id': 69},
+    '38': {'name': 'Austrian Bundesliga', 'code': 'at', 'id': 38},
+    '64': {'name': 'Scottish Premiership', 'code': 'sc', 'id': 64},
+    '67': {'name': 'Swedish Allsvenskan', 'code': 'se', 'id': 67},
+    '252': {'name': 'Croatian HNL', 'code': 'hr', 'id': 252},
 }
 
 
@@ -117,12 +136,14 @@ def league_standings(league_id):
         uefa_points = get_uefa_points()
         standings = get_all_standings(int(league_id))
         
+        error_message = None
         if not uefa_points:
             logger.warning("Failed to fetch UEFA points")
             uefa_points = {}
         
         if not standings:
-            logger.warning(f"Failed to fetch standings for league {league_id}")
+            error_message = f"Failed to fetch standings for {LEAGUES[league_id]['name']}. The league may not be supported by the API."
+            logger.warning(error_message)
             standings = []
         
         # Merge the data
@@ -130,8 +151,14 @@ def league_standings(league_id):
         
         logger.info(f"Successfully fetched and merged data for {len(merged_data)} clubs")
         
-        return render_template("index.html", clubs=merged_data, leagues=LEAGUES, 
-                             selected_league=league_id, league_name=LEAGUES[league_id]['name'])
+        return render_template(
+            "index.html",
+            clubs=merged_data,
+            leagues=LEAGUES,
+            selected_league=league_id,
+            league_name=LEAGUES[league_id]['name'],
+            error=error_message
+        )
     
     except Exception as e:
         logger.error(f"Error in league_standings: {e}", exc_info=True)
@@ -166,4 +193,37 @@ def get_clubs_api(league_id):
 
 
 if __name__ == "__main__":
+    def refresh_cache_once():
+        """Clear relevant cache keys and re-fetch data to repopulate cache."""
+        try:
+            # refresh UEFA points
+            clear_cache('uefa_points_2026')
+            get_uefa_points()
+            # refresh standings for all configured leagues
+            for lid in LEAGUES.keys():
+                key = f"standings_{lid}"
+                clear_cache(key)
+                try:
+                    get_all_standings(int(lid))
+                except Exception:
+                    # ignore per-league errors during refresh
+                    pass
+        except Exception:
+            pass
+
+    def refresh_loop(interval_seconds=24*3600, initial_delay=10):
+        # optional small delay on startup
+        time.sleep(initial_delay)
+        while True:
+            refresh_cache_once()
+            time.sleep(interval_seconds)
+
+    def start_daily_refresh():
+        t = threading.Thread(target=refresh_loop, kwargs={'interval_seconds': 24*3600, 'initial_delay': 10}, daemon=True)
+        t.start()
+
+    # Start background refresh thread only once (avoid Werkzeug reloader duplicate)
+    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        start_daily_refresh()
+
     app.run(debug=True)

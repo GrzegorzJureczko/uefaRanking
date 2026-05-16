@@ -1,0 +1,9 @@
+{
+  "league": {
+    "name": "Belgian First Division A",
+    "code": "be",
+    "id": 40
+  },
+  "standings": [],
+  "error": "fetch failed"
+}
