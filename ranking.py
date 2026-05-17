@@ -1,6 +1,5 @@
 import requests
 import os
-from cache import get_cache, set_cache
 
 url = "https://api.rankingiuefa.pl/"
 
@@ -32,17 +31,9 @@ def ExtractRanking(json_data):
 
 
 def get_uefa_points():
-    """Main function to get all UEFA points data (cached daily)"""
-    cache_key = "uefa_points_2026"
-    cached = get_cache(cache_key, ttl_seconds=24*3600)
-    if cached is not None:
-        return cached
-
+    """Main function to get all UEFA points data"""
     rank = getUEFARanking(2026)
-    ranking = ExtractRanking(rank)
-    # store parsed ranking in cache
-    set_cache(cache_key, ranking)
-    return ranking
+    return ExtractRanking(rank)
 
 
 if __name__ == "__main__":

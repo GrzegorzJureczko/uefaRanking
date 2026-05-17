@@ -3,10 +3,7 @@ from ranking import get_uefa_points
 from standings import get_all_standings
 from difflib import SequenceMatcher
 import logging
-import threading
-import time
 import os
-from cache import clear_cache
 
 app = Flask(__name__)
 
@@ -193,37 +190,4 @@ def get_clubs_api(league_id):
 
 
 if __name__ == "__main__":
-    def refresh_cache_once():
-        """Clear relevant cache keys and re-fetch data to repopulate cache."""
-        try:
-            # refresh UEFA points
-            clear_cache('uefa_points_2026')
-            get_uefa_points()
-            # refresh standings for all configured leagues
-            for lid in LEAGUES.keys():
-                key = f"standings_{lid}"
-                clear_cache(key)
-                try:
-                    get_all_standings(int(lid))
-                except Exception:
-                    # ignore per-league errors during refresh
-                    pass
-        except Exception:
-            pass
-
-    def refresh_loop(interval_seconds=24*3600, initial_delay=10):
-        # optional small delay on startup
-        time.sleep(initial_delay)
-        while True:
-            refresh_cache_once()
-            time.sleep(interval_seconds)
-
-    def start_daily_refresh():
-        t = threading.Thread(target=refresh_loop, kwargs={'interval_seconds': 24*3600, 'initial_delay': 10}, daemon=True)
-        t.start()
-
-    # Start background refresh thread only once (avoid Werkzeug reloader duplicate)
-    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        start_daily_refresh()
-
     app.run(debug=True)

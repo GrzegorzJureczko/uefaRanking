@@ -1,7 +1,6 @@
 import json
 import http.client
 import os
-from cache import get_cache, set_cache
 
 # Credentials for the free-api-live-football-data API
 RAPIDAPI_HOST = "free-api-live-football-data.p.rapidapi.com"
@@ -77,19 +76,11 @@ def extract_standings(json_data):
 
 def get_all_standings(league_id=196):
     """Main function to get all standings data for a specific league"""
-    # try cache first (1 day TTL)
-    cache_key = f"standings_{league_id}"
-    cached = get_cache(cache_key, ttl_seconds=24*3600)
-    if cached is not None:
-        return cached
-
     standings_data = get_league_standings(league_id)
     if standings_data is None:
         return []
 
-    extracted = extract_standings(standings_data)
-    set_cache(cache_key, extracted)
-    return extracted
+    return extract_standings(standings_data)
 
 
 if __name__ == "__main__":
