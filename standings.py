@@ -2,7 +2,7 @@
 import requests
 
 SPORTSDB_HEADERS = {
-    "apikey": "123"
+    "apikey": "6676965455"
 }
 
 # Map existing league IDs to TheSportsDB league IDs.
@@ -41,11 +41,17 @@ def get_league_standings(league_id):
         print(f"No SportsDB mapping for league ID {league_id}")
         return None
 
-    url = f"https://www.thesportsdb.com/api/v1/json/123/lookuptable.php?l={sportsdb_league_id}"
+    api_key = SPORTSDB_HEADERS.get("apikey")
+    if not api_key:
+        print("No SportsDB API key configured in SPORTSDB_HEADERS")
+        return None
+
+    url = f"https://www.thesportsdb.com/api/v1/json/{api_key}/lookuptable.php?l={sportsdb_league_id}"
     try:
-        response = requests.get(url, headers=SPORTSDB_HEADERS, timeout=20)
+        response = requests.get(url, timeout=20)
         print(f"API Response Status: {response.status_code} {response.reason}")
         response.raise_for_status()
+        print(f"API Response Content: {response.text[:500]}")  # Print first 500 chars for debugging
 
         standings = response.json()
         if not isinstance(standings, dict) or "table" not in standings:
