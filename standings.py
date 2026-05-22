@@ -1,45 +1,57 @@
-import json
-import http.client
-import os
+﻿import json
+import requests
 
-# Credentials for the free-api-live-football-data API
-RAPIDAPI_HOST = "free-api-live-football-data.p.rapidapi.com"
-#RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "aa0f9d7724msh696a52e2cb168ccp128165jsn36e76705848d")
-#RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "0e370235bbmsh2d7db50a7854262p172ee6jsne4135685045b")
-#RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "c81b67ec96mshc3e78f464f7789bp160413jsne449a0779d01")
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "2f7b923a4cmsh2e90398598101ebp1bde78jsnda831b16acc4")
+SPORTSDB_HEADERS = {
+    "apikey": "123"
+}
 
-
-
+# Map existing league IDs to TheSportsDB league IDs.
+# Only English Premier League is mapped here; add more mappings as needed.
+LEAGUE_ID_MAP = {
+    47: 4328,
+    55: 4332,  
+    87: 4335,
+    54: 4331,
+    53: 4334,
+    61: 4344,
+    57: 4337,
+    40: 4338,
+    71: 4339,
+    122: 4631,
+    135: 4336,
+    196: 4422,
+    46: 4340,
+    59: 4358,
+    136: 4630,
+    69: 4675,
+    38: 4621,
+    64: 4330,
+    67: 4347,
+    252: 4629,
+}
 
 
 def get_league_standings(league_id):
     """
-    Fetch league standings from the API
-    league_id: The ID of the league to fetch standings for
+    Fetch league standings from TheSportsDB API.
+    league_id: Local league ID used by the app.
     """
-    try:
-        conn = http.client.HTTPSConnection(RAPIDAPI_HOST)
-        
-        headers = {
-            'x-rapidapi-host': RAPIDAPI_HOST,
-            'Content-Type': "application/json",
-            "X-RapidAPI-Key": RAPIDAPI_KEY
-        }
-        
-        conn.request("GET", f"/football-get-standing-all?leagueid={league_id}", headers=headers)
-        
-        res = conn.getresponse()
-        print(f"API Response Status: {res.status} {res.reason}")
-        data = res.read()
-        
-        standings = json.loads(data.decode("utf-8"))
-        conn.close()
+    sportsdb_league_id = LEAGUE_ID_MAP.get(league_id)
+    if sportsdb_league_id is None:
+        print(f"No SportsDB mapping for league ID {league_id}")
+        return None
 
-        if isinstance(standings, dict) and standings.get('status') == 'failed':
-            print(f"API reported failure for league {league_id}: {standings.get('message')}")
+    url = f"https://www.thesportsdb.com/api/v1/json/123/lookuptable.php?l={sportsdb_league_id}"
+    try:
+        response = requests.get(url, headers=SPORTSDB_HEADERS, timeout=20)
+        print(f"API Response Status: {response.status_code} {response.reason}")
+        response.raise_for_status()
+
+        standings = response.json()
+        if not isinstance(standings, dict) or "table" not in standings:
+            print(f"Unexpected response format for league {league_id}")
             return None
-        
+
         return standings
     except Exception as e:
         print(f"Error fetching standings: {e}")
@@ -48,29 +60,29 @@ def get_league_standings(league_id):
 
 def extract_standings(json_data):
     """
-    Extract relevant standing information from API response
-    Returns a list of dicts with club info
+    Extract relevant standing information from TheSportsDB response.
+    Returns a list of dicts with club info.
     """
-    if not json_data or 'response' not in json_data:
+    if not json_data or "table" not in json_data:
         return []
-    
+
     standings_list = []
-    for item in json_data['response']['standing']:
+    for item in json_data["table"]:
         club_info = {
-            'name': item.get('name', 'Unknown'),
-            'short_name': item.get('shortName', ''),
-            'played': item.get('played', 0),
-            'wins': item.get('wins', 0),
-            'draws': item.get('draws', 0),
-            'losses': item.get('losses', 0),
-            'goals_for': item.get('scoresStr', '0-0').split('-')[0],
-            'goals_against': item.get('scoresStr', '0-0').split('-')[1],
-            'goal_diff': item.get('goalConDiff', 0),
-            'points': item.get('pts', 0),
-            'position': item.get('idx', 0)
+            "name": item.get("strTeam", "Unknown"),
+            "short_name": item.get("strTeam", ""),
+            "played": int(item.get("intPlayed") or 0),
+            "wins": int(item.get("intWin") or 0),
+            "draws": int(item.get("intDraw") or 0),
+            "losses": int(item.get("intLoss") or 0),
+            "goals_for": int(item.get("intGoalsFor") or 0),
+            "goals_against": int(item.get("intGoalsAgainst") or 0),
+            "goal_diff": int(item.get("intGoalDifference") or 0),
+            "points": int(item.get("intPoints") or 0),
+            "position": int(item.get("intRank") or 0)
         }
         standings_list.append(club_info)
-    
+
     return standings_list
 
 
@@ -85,6 +97,6 @@ def get_all_standings(league_id=196):
 
 if __name__ == "__main__":
     print("Fetching league standings...")
-    standings = get_all_standings(196)
+    standings = get_all_standings(47)
     for club in standings:
         print(f"{club['position']}. {club['name']}: {club['points']} pts ({club['played']} matches)")

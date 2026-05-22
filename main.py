@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # League configuration with IDs and names
 LEAGUES = {
     '47': {'name': 'English Premier League', 'code': 'en', 'id': 47},
-    '55': {'name': 'Italian Serie A', 'code': 'it', 'id': 55},
+    '55': {'name': 'Italian Serie A', 'code': 'it', 'id': 55},  
     '87': {'name': 'Spanish La Liga', 'code': 'es', 'id': 87},
     '54': {'name': 'German Bundesliga', 'code': 'de', 'id': 54},
     '53': {'name': 'French Ligue 1', 'code': 'fr', 'id': 53},
@@ -57,9 +57,9 @@ def fuzzy_match_clubs(uefa_clubs, standings_clubs):
                 best_match = uefa_name
         
         # Only match if similarity is high enough (80%)
-        if best_ratio > 0.8:
+        if best_ratio > 0.7:
             mapping[standing_club['name']] = best_match
-    
+    print(f"Fuzzy matching results: {mapping}")
     return mapping
 
 

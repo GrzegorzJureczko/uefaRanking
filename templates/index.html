@@ -140,6 +140,16 @@
             border-bottom: none;
         }
 
+        .group-header-row td {
+            background: #f5f5f8;
+            color: #333;
+            font-weight: 700;
+            padding: 14px 18px;
+            border-bottom: 1px solid #ddd;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
         .position {
             font-weight: bold;
             color: #667eea;
@@ -285,7 +295,14 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {% set current_group = None %}
                     {% for club in clubs %}
+                        {% if club.group_name and club.group_name != current_group %}
+                        <tr class="group-header-row">
+                            <td colspan="9" class="group-header-cell">{{ club.group_name }}</td>
+                        </tr>
+                        {% set current_group = club.group_name %}
+                        {% endif %}
                     <tr>
                         <td class="position">{{ club.position }}</td>
                         <td class="club-name">{{ club.name }}</td>
