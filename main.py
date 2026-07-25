@@ -2,8 +2,10 @@ from flask import Flask, render_template, jsonify, request
 from ranking import get_uefa_points
 from standings import get_all_standings
 from difflib import SequenceMatcher
+from pathlib import Path
 import logging
 import os
+import json
 
 app = Flask(__name__)
 
@@ -69,6 +71,93 @@ def fuzzy_match_clubs(uefa_clubs, standings_clubs, league_country=None):
     return mapping
 
 
+def get_league_uefa_summary(league_id, uefa_points, standings_data, league_country=None):
+    """Calculate a league-level UEFA points summary from matched clubs."""
+    if not isinstance(uefa_points, dict):
+        return {"total": "-", "years": {}}
+
+    league_country_lower = league_country.lower() if league_country else None
+    yearly_totals = {}
+    matched_total = 0.0
+
+    for club in standings_data:
+        club_name = club.get("name")
+        if not club_name:
+            continue
+
+        matched_name = None
+        best_ratio = 0.0
+        for uefa_name, uefa_val in uefa_points.items():
+            if not isinstance(uefa_name, str):
+                continue
+            uefa_name_lower = uefa_name.lower()
+            if league_country_lower and isinstance(uefa_val, dict):
+                uefa_country = str(uefa_val.get('country', '')).lower()
+                if uefa_country and uefa_country != league_country_lower:
+                    continue
+            ratio = SequenceMatcher(None, club_name.lower(), uefa_name_lower).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                matched_name = uefa_name
+
+        if matched_name is None or best_ratio <= 0.8:
+            continue
+
+        uefa_val = uefa_points.get(matched_name)
+        if isinstance(uefa_val, dict):
+            years = uefa_val.get('years', {}) if isinstance(uefa_val.get('years', {}), dict) else {}
+            for year, value in years.items():
+                year_total = yearly_totals.get(year, 0.0) + float(value)
+                yearly_totals[year] = year_total
+            total = uefa_val.get('total', 0)
+            if isinstance(total, (int, float)):
+                matched_total += float(total)
+
+    if not yearly_totals and matched_total == 0.0:
+        return {"total": "-", "years": {}}
+
+    return {
+        "total": round(matched_total, 2),
+        "years": {year: round(total, 2) for year, total in sorted(yearly_totals.items())}
+    }
+
+
+def get_cached_standings(league_id):
+    """Load standings from the local JSON cache when available."""
+    cache_path = Path(__file__).resolve().parent / "data" / "standings" / f"standings_{league_id}.json"
+    if not cache_path.exists():
+        return None
+
+    try:
+        with cache_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return None
+
+    clubs = payload.get("clubs") if isinstance(payload, dict) else None
+    if not isinstance(clubs, list):
+        return None
+
+    return clubs
+
+
+def build_league_summaries(uefa_points, current_league_id=None, current_standings=None):
+    """Build a summary dictionary for all leagues for the menu."""
+    summaries = {}
+    for league_id in LEAGUES:
+        standings_data = current_standings if current_league_id and league_id == current_league_id else get_cached_standings(league_id)
+        if standings_data is None:
+            standings_data = []
+        league_info = LEAGUES[league_id]
+        summaries[league_id] = get_league_uefa_summary(
+            league_id,
+            uefa_points,
+            standings_data,
+            league_info.get("country"),
+        )
+    return summaries
+
+
 def merge_club_data(uefa_points, standings_data, league_country=None):
     """
     Merge UEFA points data with league standings data.
@@ -119,10 +208,14 @@ def merge_club_data(uefa_points, standings_data, league_country=None):
 def index():
     """Show league selector"""
     try:
-        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[])
+        uefa_points = get_uefa_points()
+        if not uefa_points:
+            uefa_points = {}
+        league_summaries = build_league_summaries(uefa_points)
+        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], league_summary={}, league_summaries=league_summaries)
     except Exception as e:
         logger.error(f"Error in index: {e}", exc_info=True)
-        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], error=str(e))
+        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], league_summary={}, league_summaries={}, error=str(e))
 
 
 @app.route("/league/<league_id>")
@@ -130,7 +223,7 @@ def league_standings(league_id):
     """Show standings for a specific league"""
     try:
         if league_id not in LEAGUES:
-            return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], 
+            return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], league_summary={}, league_summaries={},
                                  error="Invalid league selected")
         
         logger.info(f"Fetching data for league {LEAGUES[league_id]['name']}...")
@@ -151,6 +244,8 @@ def league_standings(league_id):
         
         # Merge the data
         merged_data = merge_club_data(uefa_points, standings, LEAGUES[league_id]['country'])
+        league_summary = get_league_uefa_summary(league_id, uefa_points, standings, LEAGUES[league_id]['country'])
+        league_summaries = build_league_summaries(uefa_points, current_league_id=league_id, current_standings=standings)
         
         logger.info(f"Successfully fetched and merged data for {len(merged_data)} clubs")
         
@@ -160,13 +255,15 @@ def league_standings(league_id):
             leagues=LEAGUES,
             selected_league=league_id,
             league_name=LEAGUES[league_id]['name'],
+            league_summary=league_summary,
+            league_summaries=league_summaries,
             error=error_message
         )
     
     except Exception as e:
         logger.error(f"Error in league_standings: {e}", exc_info=True)
         return render_template("index.html", leagues=LEAGUES, selected_league=league_id, 
-                             clubs=[], error=str(e))
+                             clubs=[], league_summary={}, league_summaries={}, error=str(e))
 
 
 @app.route("/api/clubs/<league_id>")
