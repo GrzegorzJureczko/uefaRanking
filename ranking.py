@@ -6,6 +6,7 @@ import time
 
 url = "https://comp.uefa.com/v2/coefficients"
 PAGE_SIZE = 500
+BASE_YEAR = 2026
 # UEFA country names that differ from the ones used in LEAGUES (main.py)
 COUNTRY_ALIASES = {"Czechia": "Czech Republic", "Türkiye": "Turkey"}
 OVERRIDES_PATH = Path(__file__).resolve().parent / "club_name_overrides.json"
@@ -129,15 +130,25 @@ def save_cached_ranking(ranking):
         print(f"Error saving UEFA ranking cache: {e}")
 
 
+def fill_missing_years(ranking, base_year):
+    """Give every club all 5 ranking seasons (oldest first), using 0 for seasons without European games."""
+    seasons = [str(year) for year in range(base_year - 4, base_year + 1)]
+    for club in ranking.values():
+        years = club.get('years') or {}
+        club['years'] = {season: years.get(season, 0.0) for season in seasons}
+    return ranking
+
+
 def get_uefa_points():
     """Main function to get all UEFA points data"""
-    rank = getUEFARanking(2026)
+    rank = getUEFARanking(BASE_YEAR)
     ranking = ExtractRanking(rank)
     if ranking:
         save_cached_ranking(ranking)
     else:
         print("UEFA ranking API unavailable, using cached snapshot.")
         ranking = load_cached_ranking()
+    ranking = fill_missing_years(ranking, BASE_YEAR)
     overrides = load_club_name_overrides()
     return apply_club_name_overrides(ranking, overrides)
 
