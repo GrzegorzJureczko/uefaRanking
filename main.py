@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 import logging
 import re
+import time
 import unicodedata
 
 app = Flask(__name__)
@@ -102,7 +103,7 @@ def fuzzy_match_clubs(uefa_clubs, standings_clubs, league_country=None):
         # Only match if similarity is high enough (80%)
         if best_ratio > 0.8:
             mapping[standing_club['name']] = best_match
-    print(f"Fuzzy matching results: {mapping}")
+    logger.info(f"Fuzzy matching results: {mapping}")
     return mapping
 
 
@@ -264,6 +265,88 @@ def merge_club_data(uefa_points, standings_data, league_country=None):
         merged_data.append(merged_club)
     
     return merged_data
+
+
+def calculate_points_efficiency(clubs):
+    """
+    Share of a federation's UEFA points (5-year totals) held by clubs that qualified for European
+    competitions, out of the points of all its matched league clubs.
+    """
+    total = qualified = 0.0
+    for club in clubs:
+        points = club.get('uefa_points_total')
+        if not isinstance(points, (int, float)):
+            continue
+        total += points
+        if club.get('qualification'):
+            qualified += points
+
+    if total <= 0:
+        return {"percent": None, "qualified": 0.0, "total": 0.0}
+    return {
+        "percent": round(qualified / total * 100, 1),
+        "qualified": round(qualified, 2),
+        "total": round(total, 2),
+    }
+
+
+EFFICIENCY_CACHE_TTL = 24 * 3600
+CURRENT_SEASON_CACHE_TTL = 3600
+_efficiency_cache = {}
+
+
+def get_season_efficiency(season_year):
+    """
+    Points efficiency of every league for one season, or None if UEFA data is unavailable.
+    Results are cached because a season needs one request per league.
+    """
+    cached = _efficiency_cache.get(season_year)
+    if cached and cached[0] > time.time():
+        return cached[1]
+
+    uefa_points = get_uefa_points(season_year)
+    if not uefa_points:
+        return None
+
+    with ThreadPoolExecutor(max_workers=len(LEAGUES)) as executor:
+        standings_by_league = dict(zip(
+            LEAGUES, executor.map(lambda league_id: get_all_standings(int(league_id), season_year), LEAGUES)
+        ))
+
+    result = {}
+    for league_id, league in LEAGUES.items():
+        standings = standings_by_league[league_id]
+        if not standings:
+            result[league_id] = None
+            continue
+        clubs = merge_club_data(uefa_points, standings, league['country'])
+        result[league_id] = calculate_points_efficiency(clubs)
+
+    ttl = CURRENT_SEASON_CACHE_TTL if season_year == BASE_YEAR else EFFICIENCY_CACHE_TTL
+    _efficiency_cache[season_year] = (time.time() + ttl, result)
+    return result
+
+
+@app.route("/efficiency")
+def efficiency():
+    """Countries x seasons table of how much of each federation's UEFA points sit with qualified clubs"""
+    seasons = [{"year": year, "label": season_label(year)} for year in range(MIN_YEAR, BASE_YEAR + 1)]
+    return render_template("efficiency.html", leagues=LEAGUES, seasons=seasons)
+
+
+@app.route("/api/efficiency/<int:season_year>")
+def get_efficiency_api(season_year):
+    """API endpoint with points efficiency per league for one season"""
+    if not MIN_YEAR <= season_year <= BASE_YEAR:
+        return jsonify({"error": "Invalid season"}), 400
+    try:
+        result = get_season_efficiency(season_year)
+        if result is None:
+            return jsonify({"error": "UEFA ranking unavailable"}), 502
+        return jsonify({"season": season_year, "leagues": result})
+    except Exception as e:
+        logger.error(f"Error in get_efficiency_api: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/")

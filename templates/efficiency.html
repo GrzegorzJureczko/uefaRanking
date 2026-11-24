@@ -1,0 +1,336 @@
+{% extends "index.html" %}
+
+{% block title %}UEFA Points Efficiency{% endblock %}
+
+{% block extra_style %}
+        .efficiency-table th.country-col,
+        .efficiency-table td.country-cell {
+            position: sticky;
+            left: 0;
+            background: var(--surface);
+            text-align: left;
+            font-weight: 600;
+            white-space: nowrap;
+            z-index: 1;
+        }
+
+        .efficiency-table thead th.country-col {
+            background: #f7f8fd;
+            z-index: 2;
+        }
+
+        .efficiency-table td.value-cell {
+            text-align: center;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            min-width: 84px;
+        }
+
+        .efficiency-table td.empty-cell {
+            color: #aab0c2;
+            font-weight: 500;
+        }
+
+        .efficiency-table th.avg-col,
+        .efficiency-table td.avg-cell {
+            border-left: 2px solid var(--border);
+            color: var(--primary-dark);
+        }
+
+        .efficiency-table tbody tr:hover td.country-cell {
+            background: #f4f6ff;
+        }
+
+        .efficiency-status {
+            margin-bottom: 16px;
+            color: var(--muted);
+            font-size: 0.9em;
+        }
+
+        .sort-btn {
+            all: unset;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .sort-btn:hover {
+            color: var(--primary-dark);
+        }
+
+        .sort-btn:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        .sort-btn::after {
+            content: "↕";
+            opacity: 0.35;
+        }
+
+        .sort-btn[data-dir="asc"]::after {
+            content: "▲";
+            opacity: 1;
+        }
+
+        .sort-btn[data-dir="desc"]::after {
+            content: "▼";
+            opacity: 1;
+        }
+
+        .efficiency-table thead th.season-head {
+            cursor: pointer;
+            user-select: none;
+            background: #e6e9fb;
+            color: var(--primary-dark);
+            transition: background-color 0.15s ease, opacity 0.15s ease;
+        }
+
+        .efficiency-table thead th.season-head:hover {
+            background: #d9defa;
+        }
+
+        .efficiency-table thead th.season-head:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: -2px;
+        }
+
+        .efficiency-table thead th.season-head.excluded {
+            background: #f7f8fd;
+            color: var(--muted);
+            opacity: 0.55;
+        }
+
+        .season-head-inner {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .season-head .sort-btn {
+            padding: 4px 6px;
+            border-radius: 6px;
+        }
+
+        .season-head .sort-btn:hover {
+            background: rgba(79, 91, 213, 0.18);
+        }
+
+        .efficiency-table td.excluded {
+            opacity: 0.4;
+        }
+{% endblock %}
+
+{% block header %}
+            <h1>📈 UEFA Points Efficiency</h1>
+            <p>Share of a federation's UEFA points held by clubs that qualified for European competitions</p>
+            <div class="header-actions">
+                <a href="/" class="header-btn">← League Standings</a>
+            </div>
+{% endblock %}
+
+{% block content %}
+<div class="efficiency-status" id="status">Loading seasons&hellip;</div>
+
+<div class="table-container">
+    <table class="efficiency-table">
+        <thead>
+            <tr>
+                <th class="country-col"><button class="sort-btn" data-sort="country">Country</button></th>
+                {% for s in seasons %}
+                <th class="season-head" data-season-head="{{ s.year }}" role="button" tabindex="0"
+                    aria-pressed="true" title="Click to include/exclude this season in the average">
+                    <span class="season-head-inner">
+                        {{ s.label }}
+                        <button class="sort-btn" data-sort="{{ s.year }}" title="Sort by this season" aria-label="Sort by {{ s.label }}"></button>
+                    </span>
+                </th>
+                {% endfor %}
+                <th class="avg-col"><button class="sort-btn" data-sort="avg">Avg</button></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for league_id, league in leagues.items() %}
+            <tr data-league="{{ league_id }}">
+                <td class="country-cell" title="{{ league.name }}">{{ league.country }}</td>
+                {% for s in seasons %}
+                <td class="value-cell empty-cell" data-season="{{ s.year }}">&hellip;</td>
+                {% endfor %}
+                <td class="value-cell avg-cell">&ndash;</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="legend">
+    <h3>📊 How to read this</h3>
+    <div class="legend-note">
+        Each cell is the 5-year UEFA points total of the country's clubs that finished the league season in a
+        European qualification spot, divided by the 5-year UEFA points total of all the country's clubs in that
+        season's league table. A low value means a large part of the federation's points sits with clubs
+        that did not qualify for European competitions. Hover a cell for the underlying point totals.
+        Click a season header to leave it out of (or put it back into) the Avg column; use the arrow next to a header to sort.
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const SEASONS = {{ seasons | map(attribute='year') | list | tojson }};
+    const CONCURRENCY = 2;
+    const statusEl = document.getElementById('status');
+    const tbody = document.querySelector('.efficiency-table tbody');
+    const rows = [...tbody.querySelectorAll('tr[data-league]')];
+    const values = {};      // league id -> {season: percent}
+    const excluded = new Set();
+    let sortState = null;   // {key, dir}
+
+    function heatColor(percent) {
+        const ratio = Math.min(Math.max((percent - 30) / 70, 0), 1);
+        return `hsl(${Math.round(ratio * 120)}, 70%, 90%)`;
+    }
+
+    function fillCell(cell, data) {
+        cell.classList.remove('empty-cell');
+        if (!data || data.percent === null) {
+            cell.classList.add('empty-cell');
+            cell.textContent = 'n/a';
+            return;
+        }
+        cell.textContent = data.percent.toFixed(1) + '%';
+        cell.style.backgroundColor = heatColor(data.percent);
+        cell.title = `${data.qualified} / ${data.total} pts`;
+    }
+
+    function average(row) {
+        const included = Object.entries(values[row.dataset.league] || {})
+            .filter(([season]) => !excluded.has(season))
+            .map(([, percent]) => percent);
+        if (!included.length) return null;
+        return included.reduce((sum, v) => sum + v, 0) / included.length;
+    }
+
+    function updateAverage(row) {
+        const cell = row.querySelector('.avg-cell');
+        const value = average(row);
+        if (value === null) {
+            cell.textContent = '–';
+            cell.style.backgroundColor = '';
+            return;
+        }
+        cell.textContent = value.toFixed(1) + '%';
+        cell.style.backgroundColor = heatColor(value);
+    }
+
+    function sortValue(row, key) {
+        if (key === 'country') return row.querySelector('.country-cell').textContent;
+        if (key === 'avg') return average(row);
+        return (values[row.dataset.league] || {})[key] ?? null;
+    }
+
+    function applySort() {
+        document.querySelectorAll('.sort-btn').forEach(btn => {
+            btn.dataset.dir = sortState && btn.dataset.sort === sortState.key ? sortState.dir : '';
+        });
+        if (!sortState) return;
+        const factor = sortState.dir === 'asc' ? 1 : -1;
+        const sorted = [...rows].sort((a, b) => {
+            const va = sortValue(a, sortState.key);
+            const vb = sortValue(b, sortState.key);
+            if (va === null || vb === null) return (va === null) - (vb === null); // missing values last
+            const order = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+            return order * factor;
+        });
+        tbody.append(...sorted);
+    }
+
+    function setSort(key) {
+        const defaultDir = key === 'country' ? 'asc' : 'desc';
+        const flipped = sortState && sortState.dir === 'asc' ? 'desc' : 'asc';
+        const dir = sortState && sortState.key === key ? flipped : defaultDir;
+        sortState = { key, dir };
+        applySort();
+    }
+
+    function setIncluded(season, included) {
+        if (included) excluded.delete(season); else excluded.add(season);
+        const head = document.querySelector(`th[data-season-head="${season}"]`);
+        head.classList.toggle('excluded', !included);
+        head.setAttribute('aria-pressed', String(included));
+        document.querySelectorAll(`td[data-season="${season}"]`)
+            .forEach(cell => cell.classList.toggle('excluded', !included));
+        rows.forEach(updateAverage);
+        if (sortState && sortState.key === 'avg') applySort();
+    }
+
+    function markFailed(season, message) {
+        document.querySelectorAll(`td[data-season="${season}"]`).forEach(cell => {
+            cell.classList.add('empty-cell');
+            cell.textContent = 'error';
+            cell.title = message;
+        });
+    }
+
+    async function loadSeason(season) {
+        try {
+            const response = await fetch(`/api/efficiency/${season}`);
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || response.statusText);
+            rows.forEach(row => {
+                const data = payload.leagues[row.dataset.league];
+                fillCell(row.querySelector(`td[data-season="${season}"]`), data);
+                if (data && data.percent !== null) {
+                    (values[row.dataset.league] ||= {})[String(season)] = data.percent;
+                }
+                updateAverage(row);
+            });
+            if (sortState) applySort();
+            return true;
+        } catch (error) {
+            markFailed(season, error.message);
+            return false;
+        }
+    }
+
+    async function loadAll() {
+        const queue = [...SEASONS].reverse();
+        let done = 0;
+        let failed = 0;
+        const worker = async () => {
+            while (queue.length) {
+                const ok = await loadSeason(queue.shift());
+                done++;
+                if (!ok) failed++;
+                statusEl.textContent = `Loaded ${done} of ${SEASONS.length} seasons…`;
+            }
+        };
+        await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+        statusEl.textContent = failed
+            ? `Done — ${failed} season(s) failed to load, reload the page to retry.`
+            : 'Done.';
+    }
+
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.addEventListener('click', event => {
+            event.stopPropagation();
+            setSort(btn.dataset.sort);
+        });
+        btn.addEventListener('keydown', event => event.stopPropagation());
+    });
+    document.querySelectorAll('th.season-head').forEach(head => {
+        const toggle = () => setIncluded(head.dataset.seasonHead, excluded.has(head.dataset.seasonHead));
+        head.addEventListener('click', toggle);
+        head.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                toggle();
+            }
+        });
+    });
+
+    loadAll();
+</script>
+{% endblock %}

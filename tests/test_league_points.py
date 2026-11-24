@@ -1,6 +1,6 @@
 import unittest
 
-from main import get_league_uefa_summary
+from main import calculate_points_efficiency, get_league_uefa_summary
 
 
 class LeaguePointsSummaryTests(unittest.TestCase):
@@ -20,6 +20,20 @@ class LeaguePointsSummaryTests(unittest.TestCase):
         self.assertEqual(summary["years"]["2022"], 33)
         self.assertEqual(summary["years"]["2023"], 36)
         self.assertEqual(summary["years"]["2025"], 65.5)
+
+    def test_calculate_points_efficiency_counts_only_qualified_clubs(self):
+        clubs = [
+            {"uefa_points_total": 60.0, "qualification": {"title": "Champions League", "color": "#000"}},
+            {"uefa_points_total": 20.0, "qualification": None},
+            {"uefa_points_total": "-", "qualification": None},
+        ]
+
+        result = calculate_points_efficiency(clubs)
+
+        self.assertEqual(result, {"percent": 75.0, "qualified": 60.0, "total": 80.0})
+
+    def test_calculate_points_efficiency_without_points(self):
+        self.assertIsNone(calculate_points_efficiency([])["percent"])
 
 
 if __name__ == "__main__":
