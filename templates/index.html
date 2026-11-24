@@ -392,13 +392,13 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% set current_group = None %}
+                            {% set ns = namespace(group=None) %}
                             {% for club in clubs %}
-                                {% if club.group_name and club.group_name != current_group %}
+                                {% if club.group_name and club.group_name != ns.group %}
                                 <tr class="group-header-row">
                                     <td colspan="9" class="group-header-cell">{{ club.group_name }}</td>
                                 </tr>
-                                {% set current_group = club.group_name %}
+                                {% set ns.group = club.group_name %}
                                 {% endif %}
                             <tr {% if club.qualification %}style="background-color: {{ club.qualification.color }}1f;" title="{{ club.qualification.title }}"{% endif %}>
                                 <td class="position" {% if club.qualification %}style="box-shadow: inset 6px 0 0 {{ club.qualification.color }};"{% endif %}>{{ club.position }}</td>

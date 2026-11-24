@@ -256,6 +256,7 @@ def merge_club_data(uefa_points, standings_data, league_country=None):
             'goal_diff': club['goal_diff'],
             'season_points': club['points'],
             'qualification': club.get('qualification'),
+            'group_name': club.get('group_name'),
             'uefa_points_total': uefa_total,
             'uefa_points_years': uefa_years,
             'matched': uefa_club_name is not None
