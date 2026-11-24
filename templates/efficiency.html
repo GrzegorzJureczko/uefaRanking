@@ -168,9 +168,12 @@
 <div class="legend">
     <h3>📊 How to read this</h3>
     <div class="legend-note">
-        Each cell is the 5-year UEFA points total of the country's clubs that finished the league season in a
-        European qualification spot, divided by the 5-year UEFA points total of all the country's clubs in that
-        season's league table. A low value means a large part of the federation's points sits with clubs
+        Each cell is the 5-year UEFA points total of the country's clubs that qualified for European competitions,
+        divided by the 5-year UEFA points total of all the country's clubs in the UEFA ranking that season.
+        A club counts as qualified if it played in a UEFA competition the following season (so cup winners are
+        included and clubs banned from Europe are not). The current season has no following season yet, so
+        there the clubs in the European spots of the league tables are counted, out of the clubs in those tables.
+        A low value means a large part of the federation's points sits with clubs
         that did not qualify for European competitions. Hover a cell for the underlying point totals.
         Click a season header to leave it out of (or put it back into) the Avg column; use the arrow next to a header to sort.
     </div>
@@ -198,7 +201,7 @@
         if (!data || data.percent === null) {
             cell.classList.add('empty-cell');
             cell.textContent = 'n/a';
-            cell.title = 'No data: the standings source has no European qualification spots for this season';
+            cell.title = 'No data: the league table has no European qualification spots yet';
             return;
         }
         cell.textContent = data.percent.toFixed(1) + '%';

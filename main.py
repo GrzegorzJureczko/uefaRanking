@@ -286,32 +286,30 @@ def merge_club_data(uefa_points, standings_data, league_country=None):
             'group_name': club.get('group_name'),
             'uefa_points_total': uefa_total,
             'uefa_points_years': uefa_years,
-            'matched': uefa_club_name is not None
+            'matched': uefa_club_name is not None,
+            'uefa_name': uefa_club_name
         }
         merged_data.append(merged_club)
     
     return merged_data
 
 
-def calculate_points_efficiency(clubs):
+def european_participants(uefa_points, season_year):
     """
-    Share of a federation's UEFA points (5-year totals) held by clubs that qualified for European
-    competitions, out of the points of all its matched league clubs.
+    Names of clubs that played in UEFA competitions in the season ending in season_year
+    (matches are counted only for UEFA games, so domestic cup games never make a club a participant).
+    Matches are not always filled in for clubs knocked out in qualifying, so any points count too.
     """
-    total = qualified = 0.0
-    has_qualification_data = False
-    for club in clubs:
-        if club.get('qualification'):
-            has_qualification_data = True
-        points = club.get('uefa_points_total')
-        if not isinstance(points, (int, float)):
-            continue
-        total += points
-        if club.get('qualification'):
-            qualified += points
+    season = str(season_year)
+    return {
+        name for name, club in uefa_points.items()
+        if isinstance(club, dict)
+        and ((club.get('matches') or {}).get(season, 0) > 0 or (club.get('years') or {}).get(season, 0) > 0)
+    }
 
-    # Without any qualification spot in the source table (some seasons lack a legend) the result would be a misleading 0%
-    if total <= 0 or not has_qualification_data:
+
+def _efficiency_result(qualified, total):
+    if total <= 0:
         return {"percent": None, "qualified": 0.0, "total": 0.0}
     return {
         "percent": round(qualified / total * 100, 1),
@@ -320,28 +318,82 @@ def calculate_points_efficiency(clubs):
     }
 
 
+def calculate_points_efficiency(clubs):
+    """
+    Share of a federation's UEFA points (5-year totals) held by clubs that qualified for European
+    competitions according to the league table, out of the points of all its matched league clubs.
+    """
+    # Without any qualification spot in the table the result would be a misleading 0%
+    if not any(club.get('qualification') for club in clubs):
+        return _efficiency_result(0.0, 0.0)
+
+    total = qualified = 0.0
+    for club in clubs:
+        points = club.get('uefa_points_total')
+        if not isinstance(points, (int, float)):
+            continue
+        total += points
+        if club.get('qualification'):
+            qualified += points
+    return _efficiency_result(qualified, total)
+
+
+def calculate_country_efficiency(uefa_points, country, participants):
+    """
+    Share of a country's UEFA points (5-year totals, all its clubs in the UEFA ranking) held by the clubs
+    that played in Europe the next season (participants are UEFA club names).
+    Needs neither league tables nor club name matching.
+    """
+    total = qualified = 0.0
+    for name, club in uefa_points.items():
+        if not isinstance(club, dict) or str(club.get('country', '')).lower() != country.lower():
+            continue
+        points = club.get('total') or 0.0
+        total += points
+        if name in participants:
+            qualified += points
+    return _efficiency_result(qualified, total)
+
+
 _efficiency_cache = TTLCache()
 
 
 def compute_season_efficiency(uefa_points, standings_by_league, season_year):
-    """Points efficiency of every league for one season; the result is cached."""
+    """
+    Points efficiency of every league for one season; complete results are cached.
+    Past seasons use the clubs that actually played in Europe the next season. The current season has no
+    next season yet, so it uses the European spots in the league tables.
+    """
     result = {}
+    if season_year < BASE_YEAR:
+        participants = european_participants(get_uefa_points(season_year + 1) or {}, season_year + 1)
+        if not participants:
+            return {league_id: None for league_id in LEAGUES}
+        for league_id, league in LEAGUES.items():
+            result[league_id] = calculate_country_efficiency(uefa_points, league['country'], participants)
+        _efficiency_cache.set(season_year, result, season_cache_ttl(season_year))
+        return result
+
+    complete = True
     for league_id, league in LEAGUES.items():
         standings = standings_by_league[league_id]
         if not standings:
             result[league_id] = None
+            complete = False
             continue
         clubs = merge_club_data(uefa_points, standings, league['country'])
         result[league_id] = calculate_points_efficiency(clubs)
 
-    _efficiency_cache.set(season_year, result, season_cache_ttl(season_year))
+    # Incomplete results (a failed fetch) are not cached so the next request retries
+    if complete:
+        _efficiency_cache.set(season_year, result, season_cache_ttl(season_year))
     return result
 
 
 def get_season_efficiency(season_year):
     """
     Points efficiency of every league for one season, or None if UEFA data is unavailable.
-    Results are cached because a season needs one request per league.
+    Results are cached; only the current season needs the league tables (one request per league).
     """
     cached = _efficiency_cache.get(season_year)
     if cached is not None:
@@ -351,7 +403,8 @@ def get_season_efficiency(season_year):
     if not uefa_points:
         return None
 
-    return compute_season_efficiency(uefa_points, fetch_all_standings(season_year), season_year)
+    standings_by_league = fetch_all_standings(season_year) if season_year == BASE_YEAR else {}
+    return compute_season_efficiency(uefa_points, standings_by_league, season_year)
 
 
 def warm_season(season_year, refresh=False):
