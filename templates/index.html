@@ -596,24 +596,12 @@
                 </div>
 
                 <div class="legend">
-                    <h3>📊 Column Descriptions</h3>
-                    <div class="legend-item">
-                        <span class="legend-color" style="background: #4f5bd5;"></span>
-                        <strong>Season Pts:</strong> Points earned in the selected league season
-                    </div>
-                    <div class="legend-item">
-                        <span class="legend-color" style="background: #7b3fbf;"></span>
-                        <strong>UEFA Pts:</strong> Total points from UEFA club competitions over 5 years
-                    </div>
                     {% for spot in qualification_legend %}
                     <div class="legend-item">
                         <span class="legend-color" style="background: {{ spot.color }};"></span>
                         {{ spot.title }}
                     </div>
                     {% endfor %}
-                    <div class="legend-note">
-                        <strong>Stats:</strong> W = Wins, D = Draws, L = Losses, GD = Goal Difference
-                    </div>
                 </div>
                 {% elif selected_league %}
                 <div class="loading">
