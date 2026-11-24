@@ -169,9 +169,34 @@
             color: var(--text);
             text-decoration: none;
             display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .league-btn-logo {
+            flex: 0 0 36px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            border-radius: 8px;
+        }
+
+        .league-btn-logo img {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+        }
+
+        .league-btn-text {
+            display: flex;
             flex-direction: column;
             align-items: flex-start;
             gap: 2px;
+            min-width: 0;
         }
 
         .league-btn:hover {
@@ -485,6 +510,11 @@
                     {% for league_id, league_info in leagues.items() %}
                     <a href="/league/{{ league_id }}?season={{ season }}"
                        class="league-btn {% if selected_league == league_id %}active{% endif %}">
+                        <span class="league-btn-logo">
+                            <img src="https://images.fotmob.com/image_resources/logo/leaguelogo/{{ league_info.id }}.png"
+                                 alt="" width="28" height="28" loading="lazy" onerror="this.style.visibility='hidden'">
+                        </span>
+                        <span class="league-btn-text">
                         <span class="league-btn-name">{{ league_info.name }}</span>
                         {% if selected_league == league_id %}
                             {% set league_points = league_summary if league_summary else {} %}
@@ -500,6 +530,7 @@
                             <span class="league-btn-preview-points">{{ league_points.total }}</span>
                             {% endif %}
                         {% endif %}
+                        </span>
                     </a>
                     {% endfor %}
                 </div>
