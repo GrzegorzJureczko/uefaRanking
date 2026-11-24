@@ -1,6 +1,6 @@
-﻿import requests
-
-from ranking import BASE_YEAR
+﻿from cache import ttl_cache
+from http_session import session
+from ranking import BASE_YEAR, season_cache_ttl
 
 FOTMOB_URL = "https://www.fotmob.com/api/data/tltable"
 FOTMOB_LEAGUES_URL = "https://www.fotmob.com/api/data/leagues"
@@ -15,7 +15,7 @@ def get_league_standings(league_id):
     league_id: League ID used by the app, which is also the FotMob league ID.
     """
     try:
-        response = requests.get(
+        response = session.get(
             FOTMOB_URL, params={"leagueId": league_id}, headers=FOTMOB_HEADERS, timeout=20
         )
         print(f"API Response Status: {response.status_code} {response.reason}")
@@ -129,7 +129,7 @@ def get_league_standings_for_season(league_id, season_year):
     """
     try:
         for label in _season_labels(season_year):
-            response = requests.get(
+            response = session.get(
                 FOTMOB_LEAGUES_URL,
                 params={"id": league_id, "season": label},
                 headers=FOTMOB_HEADERS,
@@ -151,6 +151,7 @@ def get_league_standings_for_season(league_id, season_year):
         return None
 
 
+@ttl_cache(lambda league_id, season_year: season_cache_ttl(season_year))
 def get_all_standings(league_id=196, season_year=None):
     """Main function to get all standings data for a specific league (and season ending in season_year)"""
     if season_year is None or season_year == BASE_YEAR:

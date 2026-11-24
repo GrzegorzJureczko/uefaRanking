@@ -1,14 +1,22 @@
 from flask import Flask, render_template, jsonify, request
-from ranking import get_uefa_points, BASE_YEAR, MIN_YEAR
+from cache import TTLCache
+from ranking import get_uefa_points, season_cache_ttl, BASE_YEAR, MIN_YEAR, CURRENT_SEASON_CACHE_TTL, HISTORIC_SEASON_CACHE_TTL
 from standings import get_all_standings
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 import logging
+import os
 import re
+import threading
 import time
 import unicodedata
 
 app = Flask(__name__)
+
+# Background cache warm-up: pause between seasons (be gentle to FotMob), check interval and refresh lead time (seconds)
+WARMUP_PAUSE = 1
+WARMUP_TICK = 300
+WARMUP_REFRESH_MARGIN = 600
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -198,17 +206,19 @@ def qualification_legend(clubs):
     return [{"title": title, "color": color} for title, color in legend.items()]
 
 
-def build_league_summaries(uefa_points, current_league_id=None, current_standings=None, season_year=BASE_YEAR):
-    """Build a summary dictionary for all leagues for the menu (standings are fetched in parallel)."""
-    def fetch(league_id):
-        if current_league_id and league_id == current_league_id:
-            return current_standings
-        return get_all_standings(int(league_id), season_year)
+_summaries_cache = TTLCache()
 
+
+def fetch_all_standings(season_year, refresh=False):
+    """Standings of every league for a season, fetched in parallel (refresh bypasses the standings cache)."""
+    fetch = get_all_standings.refresh if refresh else get_all_standings
     with ThreadPoolExecutor(max_workers=len(LEAGUES)) as executor:
-        standings_by_league = dict(zip(LEAGUES, executor.map(fetch, LEAGUES)))
+        return dict(zip(LEAGUES, executor.map(lambda league_id: fetch(int(league_id), season_year), LEAGUES)))
 
-    return {
+
+def compute_league_summaries(uefa_points, standings_by_league, season_year):
+    """Summaries of all leagues for the menu; complete results are cached."""
+    summaries = {
         league_id: get_league_uefa_summary(
             league_id,
             uefa_points,
@@ -217,6 +227,22 @@ def build_league_summaries(uefa_points, current_league_id=None, current_standing
         )
         for league_id in LEAGUES
     }
+    # Incomplete results (a failed fetch) are not cached so the next request retries
+    if uefa_points and all(standings_by_league.values()):
+        _summaries_cache.set(season_year, summaries, season_cache_ttl(season_year))
+    return summaries
+
+
+def build_league_summaries(uefa_points, current_league_id=None, current_standings=None, season_year=BASE_YEAR):
+    """Build a summary dictionary for all leagues for the menu (standings are fetched in parallel)."""
+    cached = _summaries_cache.get(season_year)
+    if cached is not None:
+        return cached
+
+    standings_by_league = fetch_all_standings(season_year)
+    if current_league_id in standings_by_league:
+        standings_by_league[current_league_id] = current_standings
+    return compute_league_summaries(uefa_points, standings_by_league, season_year)
 
 
 def merge_club_data(uefa_points, standings_data, league_country=None):
@@ -294,29 +320,11 @@ def calculate_points_efficiency(clubs):
     }
 
 
-EFFICIENCY_CACHE_TTL = 24 * 3600
-CURRENT_SEASON_CACHE_TTL = 3600
-_efficiency_cache = {}
+_efficiency_cache = TTLCache()
 
 
-def get_season_efficiency(season_year):
-    """
-    Points efficiency of every league for one season, or None if UEFA data is unavailable.
-    Results are cached because a season needs one request per league.
-    """
-    cached = _efficiency_cache.get(season_year)
-    if cached and cached[0] > time.time():
-        return cached[1]
-
-    uefa_points = get_uefa_points(season_year)
-    if not uefa_points:
-        return None
-
-    with ThreadPoolExecutor(max_workers=len(LEAGUES)) as executor:
-        standings_by_league = dict(zip(
-            LEAGUES, executor.map(lambda league_id: get_all_standings(int(league_id), season_year), LEAGUES)
-        ))
-
+def compute_season_efficiency(uefa_points, standings_by_league, season_year):
+    """Points efficiency of every league for one season; the result is cached."""
     result = {}
     for league_id, league in LEAGUES.items():
         standings = standings_by_league[league_id]
@@ -326,9 +334,68 @@ def get_season_efficiency(season_year):
         clubs = merge_club_data(uefa_points, standings, league['country'])
         result[league_id] = calculate_points_efficiency(clubs)
 
-    ttl = CURRENT_SEASON_CACHE_TTL if season_year == BASE_YEAR else EFFICIENCY_CACHE_TTL
-    _efficiency_cache[season_year] = (time.time() + ttl, result)
+    _efficiency_cache.set(season_year, result, season_cache_ttl(season_year))
     return result
+
+
+def get_season_efficiency(season_year):
+    """
+    Points efficiency of every league for one season, or None if UEFA data is unavailable.
+    Results are cached because a season needs one request per league.
+    """
+    cached = _efficiency_cache.get(season_year)
+    if cached is not None:
+        return cached
+
+    uefa_points = get_uefa_points(season_year)
+    if not uefa_points:
+        return None
+
+    return compute_season_efficiency(uefa_points, fetch_all_standings(season_year), season_year)
+
+
+def warm_season(season_year, refresh=False):
+    """Load (or with refresh, re-fetch) all data the pages need for one season into the caches."""
+    uefa_points = (get_uefa_points.refresh if refresh else get_uefa_points)(season_year)
+    if not uefa_points:
+        return
+    standings_by_league = fetch_all_standings(season_year, refresh)
+    compute_league_summaries(uefa_points, standings_by_league, season_year)
+    compute_season_efficiency(uefa_points, standings_by_league, season_year)
+
+
+def _warm_seasons(seasons, refresh=False):
+    for season_year in seasons:
+        try:
+            warm_season(season_year, refresh)
+        except Exception as e:
+            logger.error(f"Cache warm-up failed for season {season_year}: {e}", exc_info=True)
+        time.sleep(WARMUP_PAUSE)
+
+
+def _warmup_loop():
+    historic_seasons = range(BASE_YEAR - 1, MIN_YEAR - 1, -1)
+    _warm_seasons([BASE_YEAR])
+    _warm_seasons(historic_seasons)
+    logger.info("Cache warm-up finished")
+
+    now = time.monotonic()
+    current_refreshed = historic_refreshed = now
+    while True:
+        time.sleep(WARMUP_TICK)
+        now = time.monotonic()
+        # Refresh shortly before the entries expire so visitors never wait for a cold fetch
+        if now - current_refreshed >= CURRENT_SEASON_CACHE_TTL - WARMUP_REFRESH_MARGIN:
+            _warm_seasons([BASE_YEAR], refresh=True)
+            current_refreshed = now
+        if now - historic_refreshed >= HISTORIC_SEASON_CACHE_TTL - WARMUP_REFRESH_MARGIN:
+            _warm_seasons(historic_seasons, refresh=True)
+            historic_refreshed = now
+
+
+def start_cache_warmup():
+    """Fill the caches in a background thread (current season first) and keep them fresh."""
+    threading.Thread(target=_warmup_loop, name="cache-warmup", daemon=True).start()
 
 
 @app.route("/efficiency")
@@ -397,8 +464,8 @@ def league_standings(league_id):
         
         # Merge the data
         merged_data = merge_club_data(uefa_points, standings, LEAGUES[league_id]['country'])
-        league_summary = get_league_uefa_summary(league_id, uefa_points, standings, LEAGUES[league_id]['country'])
         league_summaries = build_league_summaries(uefa_points, current_league_id=league_id, current_standings=standings, season_year=season)
+        league_summary = league_summaries[league_id]
         
         logger.info(f"Successfully fetched and merged data for {len(merged_data)} clubs")
         
@@ -450,4 +517,8 @@ def get_clubs_api(league_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    DEBUG = True
+    # The debug reloader runs this module twice; only its serving child process should warm the caches
+    if not DEBUG or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        start_cache_warmup()
+    app.run(debug=DEBUG)

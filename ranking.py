@@ -2,9 +2,15 @@ import json
 from pathlib import Path
 import requests
 
+from cache import ttl_cache
+from http_session import session
+
 url = "https://comp.uefa.com/v2/coefficients"
 PAGE_SIZE = 500
 BASE_YEAR = 2027
+# The current season changes while it is played; finished seasons practically never do
+CURRENT_SEASON_CACHE_TTL = 3600
+HISTORIC_SEASON_CACHE_TTL = 24 * 3600
 # Oldest season with both UEFA coefficients (from 2005) and FotMob standings (from 2010/11)
 MIN_YEAR = 2011
 # UEFA country names that differ from the ones used in LEAGUES (main.py)
@@ -47,13 +53,20 @@ def apply_club_name_overrides(ranking_dict, overrides):
     return ranking_dict
 
 
+def season_cache_ttl(season_year=None):
+    """Cache lifetime (seconds) of data for a season ending in season_year (None means the current season)."""
+    if season_year is None or season_year == BASE_YEAR:
+        return CURRENT_SEASON_CACHE_TTL
+    return HISTORIC_SEASON_CACHE_TTL
+
+
 def getUEFARanking(baseYear):
     """Fetch the 5-year UEFA club coefficient ranking (all pages) from the official UEFA API"""
     members = []
     page = 1
     try:
         while True:
-            response = requests.get(
+            response = session.get(
                 url,
                 params={
                     "coefficientType": "MEN_CLUB",
@@ -95,10 +108,16 @@ def ExtractRanking(members):
             for season in entry.get('seasonRankings', [])
             if 'seasonYear' in season
         }
+        matches = {
+            str(season['seasonYear']): season.get('numberOfMatches') or 0
+            for season in entry.get('seasonRankings', [])
+            if 'seasonYear' in season
+        }
         ranking_dict[name] = {
             'country': COUNTRY_ALIASES.get(country, country),
             'total': overall.get('totalPoints', 0),
-            'years': years
+            'years': years,
+            'matches': matches
         }
     return ranking_dict
 
@@ -112,6 +131,7 @@ def fill_missing_years(ranking, base_year):
     return ranking
 
 
+@ttl_cache(season_cache_ttl)
 def get_uefa_points(base_year=BASE_YEAR):
     """Main function to get all UEFA points data (5 seasons ending in base_year)"""
     rank = getUEFARanking(base_year)
