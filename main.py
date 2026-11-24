@@ -273,7 +273,10 @@ def calculate_points_efficiency(clubs):
     competitions, out of the points of all its matched league clubs.
     """
     total = qualified = 0.0
+    has_qualification_data = False
     for club in clubs:
+        if club.get('qualification'):
+            has_qualification_data = True
         points = club.get('uefa_points_total')
         if not isinstance(points, (int, float)):
             continue
@@ -281,7 +284,8 @@ def calculate_points_efficiency(clubs):
         if club.get('qualification'):
             qualified += points
 
-    if total <= 0:
+    # Without any qualification spot in the source table (some seasons lack a legend) the result would be a misleading 0%
+    if total <= 0 or not has_qualification_data:
         return {"percent": None, "qualified": 0.0, "total": 0.0}
     return {
         "percent": round(qualified / total * 100, 1),

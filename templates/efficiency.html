@@ -198,6 +198,7 @@
         if (!data || data.percent === null) {
             cell.classList.add('empty-cell');
             cell.textContent = 'n/a';
+            cell.title = 'No data: the standings source has no European qualification spots for this season';
             return;
         }
         cell.textContent = data.percent.toFixed(1) + '%';

@@ -35,6 +35,11 @@ class LeaguePointsSummaryTests(unittest.TestCase):
     def test_calculate_points_efficiency_without_points(self):
         self.assertIsNone(calculate_points_efficiency([])["percent"])
 
+    def test_calculate_points_efficiency_without_qualification_data(self):
+        clubs = [{"uefa_points_total": 50.0, "qualification": None}]
+
+        self.assertIsNone(calculate_points_efficiency(clubs)["percent"])
+
 
 if __name__ == "__main__":
     unittest.main()
