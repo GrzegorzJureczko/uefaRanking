@@ -6,12 +6,12 @@ import time
 
 url = "https://comp.uefa.com/v2/coefficients"
 PAGE_SIZE = 500
-BASE_YEAR = 2026
+BASE_YEAR = 2027
 # UEFA country names that differ from the ones used in LEAGUES (main.py)
 COUNTRY_ALIASES = {"Czechia": "Czech Republic", "Türkiye": "Turkey"}
 OVERRIDES_PATH = Path(__file__).resolve().parent / "club_name_overrides.json"
 CACHE_PATH = Path(__file__).resolve().parent / "data" / "cache.json"
-CACHE_KEY = "uefa_points_2026"
+CACHE_KEY = f"uefa_points_{BASE_YEAR}"
 
 def load_club_name_overrides():
     """Load optional manual club name overrides from JSON."""
