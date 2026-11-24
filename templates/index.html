@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>League Standings with UEFA Points</title>
     <style>
+        :root {
+            --bg: #f3f5fb;
+            --surface: #ffffff;
+            --text: #1f2437;
+            --muted: #6b7288;
+            --border: #e6e9f2;
+            --primary: #4f5bd5;
+            --primary-dark: #3a3fa8;
+            --accent: #7b3fbf;
+            --hero-from: #1d2350;
+            --hero-to: #4b2a86;
+            --radius: 14px;
+            --shadow: 0 2px 4px rgba(25, 32, 70, 0.05), 0 8px 24px rgba(25, 32, 70, 0.08);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,15 +27,67 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
             min-height: 100vh;
-            padding: 20px;
+            line-height: 1.4;
         }
 
         .container {
             max-width: 1400px;
             margin: 0 auto;
+            padding: 24px 20px 40px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-to) 100%);
+            color: white;
+            padding: 36px 32px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.2em;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 1.05em;
+        }
+
+        .season-form {
+            margin-top: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+
+        .season-form select {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 999px;
+            font-size: 0.95em;
+            font-weight: 600;
+            color: var(--text);
+            background: white;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .season-form select:focus-visible {
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.45);
         }
 
         .content-layout {
@@ -29,90 +96,64 @@
             align-items: flex-start;
         }
 
-        .header {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
-            text-align: center;
-        }
-
-        .header h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 2.5em;
-        }
-
-        .header p {
-            color: #666;
-            font-size: 1.1em;
-        }
-
-        .season-form {
-            margin-top: 15px;
-            color: #333;
-            font-weight: 600;
-        }
-
-        .season-form select {
-            margin-left: 8px;
-            padding: 8px 12px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-size: 1em;
-            cursor: pointer;
-        }
-
         .league-selector {
-            background: white;
+            background: var(--surface);
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 0;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
             flex: 0 0 280px;
+            position: sticky;
+            top: 20px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
         }
 
         .league-selector h3 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 1.2em;
+            color: var(--muted);
+            margin-bottom: 14px;
+            font-size: 0.8em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
         }
 
         .league-buttons {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
         }
 
         .league-btn {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 5px;
-            font-size: 1em;
+            padding: 12px 14px;
+            border: 1px solid transparent;
+            border-radius: 10px;
             cursor: pointer;
-            transition: all 0.3s ease;
-            background: #f0f0f0;
-            color: #333;
-            font-weight: 500;
+            transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+            background: transparent;
+            color: var(--text);
             text-decoration: none;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            gap: 4px;
+            align-items: flex-start;
+            gap: 2px;
         }
 
         .league-btn:hover {
-            background: #667eea;
-            color: white;
-            transform: translateY(-2px);
+            background: #eef0fb;
+            border-color: #dfe3f7;
+            transform: translateX(2px);
+        }
+
+        .league-btn:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
         }
 
         .league-btn.active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
             color: white;
+            box-shadow: 0 4px 12px rgba(79, 91, 213, 0.35);
+            transform: none;
         }
 
         .league-btn-name {
@@ -122,36 +163,27 @@
         .league-btn-preview-points {
             font-size: 0.78em;
             font-weight: 600;
-            color: #9aa2b3;
-            margin-top: 2px;
+            color: var(--muted);
         }
 
         .league-btn-points {
-            font-size: 0.82em;
+            font-size: 0.85em;
             font-weight: 600;
-            color: #764ba2;
-        }
-
-        .league-btn.active .league-btn-points {
             color: #f3e8ff;
         }
 
         .league-btn-yearly {
             font-size: 0.75em;
-            color: #777;
-            margin-top: 2px;
-        }
-
-        .league-btn.active .league-btn-yearly {
-            color: #e9d9ff;
+            color: #e1d4ff;
         }
 
         .error {
-            background: #fee;
-            border: 1px solid #fcc;
-            padding: 15px;
-            border-radius: 5px;
-            color: #c33;
+            background: #fff1f1;
+            border: 1px solid #f5c2c2;
+            border-left: 4px solid #d64545;
+            padding: 14px 16px;
+            border-radius: 10px;
+            color: #a12b2b;
             margin-bottom: 20px;
         }
 
@@ -161,10 +193,10 @@
         }
 
         .table-container {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
+            background: var(--surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow-x: auto;
         }
 
         table {
@@ -172,121 +204,169 @@
             border-collapse: collapse;
         }
 
-        thead {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+        thead th {
+            position: sticky;
+            top: 0;
+            background: #f7f8fd;
+            color: var(--muted);
+            padding: 14px 16px;
+            text-align: center;
+            font-size: 0.75em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 2px solid var(--border);
+            white-space: nowrap;
         }
 
-        th {
-            padding: 18px;
+        thead th.club-col {
             text-align: left;
-            font-weight: 600;
-            border-bottom: 2px solid #764ba2;
+        }
+
+        thead th.season-points {
+            color: var(--primary);
+        }
+
+        thead th.uefa-points {
+            color: var(--accent);
         }
 
         td {
-            padding: 16px 18px;
-            border-bottom: 1px solid #eee;
-            color: #333;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+            vertical-align: middle;
         }
 
         tbody tr {
-            transition: background-color 0.2s;
+            transition: background-color 0.15s;
         }
 
         tbody tr:hover {
-            background-color: #f8f9ff;
+            background-color: #f4f6ff;
         }
 
         tbody tr:last-child td {
             border-bottom: none;
         }
 
-        .group-header-row td {
-            background: #f5f5f8;
-            color: #333;
+        .group-header-row td,
+        .group-header-row:hover td {
+            background: #eceffa;
+            color: var(--primary-dark);
             font-weight: 700;
-            padding: 14px 18px;
-            border-bottom: 1px solid #ddd;
+            font-size: 0.85em;
+            padding: 10px 16px;
             text-transform: uppercase;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.08em;
         }
 
         .position {
-            font-weight: bold;
-            color: #667eea;
-            width: 50px;
+            font-weight: 700;
+            color: var(--muted);
+            width: 56px;
             text-align: center;
         }
 
         .club-name {
             font-weight: 600;
-            color: #333;
         }
 
         .stat-cell {
             text-align: center;
             font-weight: 500;
+            font-variant-numeric: tabular-nums;
         }
 
         .points {
-            background: #f0f0f0;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
             text-align: center;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
         }
 
-        .season-points {
-            color: #667eea;
+        td.season-points {
+            color: var(--primary);
+            font-size: 1.05em;
         }
 
-        .uefa-points {
-            color: #764ba2;
+        td.uefa-points {
+            color: var(--accent);
+        }
+
+        .uefa-total {
+            font-weight: 700;
+            font-size: 1.05em;
+        }
+
+        .uefa-years {
+            font-size: 0.75em;
+            font-weight: 500;
+            color: var(--muted);
+            margin-top: 2px;
         }
 
         .not-matched {
-            color: #999;
+            color: #aab0c2;
             font-style: italic;
         }
 
         .legend {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
+            background: var(--surface);
+            padding: 20px 24px;
+            border-radius: var(--radius);
             margin-top: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow);
         }
 
         .legend h3 {
-            color: #333;
-            margin-bottom: 10px;
+            color: var(--muted);
+            margin-bottom: 12px;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
         }
 
         .legend-item {
             display: inline-block;
-            margin-right: 30px;
+            margin-right: 28px;
             margin-bottom: 10px;
+            font-size: 0.92em;
         }
 
         .legend-color {
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            border-radius: 3px;
+            width: 14px;
+            height: 14px;
+            border-radius: 4px;
             margin-right: 8px;
             vertical-align: middle;
+        }
+
+        .legend-note {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 0.9em;
         }
 
         .loading {
             text-align: center;
             padding: 40px;
-            color: #666;
+            color: var(--muted);
         }
 
         .loading::after {
             content: "...";
             animation: dots 1.5s steps(3, end) infinite;
+        }
+
+        .placeholder {
+            background: var(--surface);
+            padding: 48px 40px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            text-align: center;
+            color: var(--muted);
+            font-size: 1.1em;
         }
 
         @keyframes dots {
@@ -296,8 +376,16 @@
         }
 
         @media (max-width: 768px) {
+            .container {
+                padding: 12px 12px 32px;
+            }
+
+            .header {
+                padding: 24px 16px;
+            }
+
             .header h1 {
-                font-size: 1.8em;
+                font-size: 1.6em;
             }
 
             .content-layout {
@@ -307,7 +395,17 @@
             .league-selector {
                 flex-basis: auto;
                 width: 100%;
-                margin-bottom: 20px;
+                position: static;
+                max-height: none;
+            }
+
+            .league-buttons {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+
+            .league-btn {
+                background: #f3f5fb;
             }
 
             .table-panel {
@@ -315,12 +413,8 @@
             }
 
             th, td {
-                padding: 12px;
-                font-size: 0.9em;
-            }
-
-            table {
-                font-size: 0.85em;
+                padding: 10px 8px;
+                font-size: 0.88em;
             }
         }
     </style>
@@ -329,9 +423,9 @@
     <div class="container">
         <div class="header">
             <h1>⚽ League Standings with UEFA Points</h1>
-            <p>UEFA Competition Ranking & League Performance &mdash; Season {{ season_name }}</p>
+            <p>UEFA Competition Ranking &amp; League Performance &mdash; Season {{ season_name }}</p>
             <form method="get" class="season-form">
-                <label for="season-select">📅 Season:</label>
+                <label for="season-select">📅 Season</label>
                 <select id="season-select" name="season" onchange="this.form.submit()">
                     {% for s in seasons %}
                     <option value="{{ s.year }}" {% if s.year == season %}selected{% endif %}>{{ s.label }}</option>
@@ -343,10 +437,10 @@
 
         <div class="content-layout">
             <div class="league-selector">
-                <h3>📊 Select a League:</h3>
+                <h3>📊 Select a League</h3>
                 <div class="league-buttons">
                     {% for league_id, league_info in leagues.items() %}
-                    <a href="/league/{{ league_id }}?season={{ season }}" 
+                    <a href="/league/{{ league_id }}?season={{ season }}"
                        class="league-btn {% if selected_league == league_id %}active{% endif %}">
                         <span class="league-btn-name">{{ league_info.name }}</span>
                         {% if selected_league == league_id %}
@@ -381,7 +475,7 @@
                         <thead>
                             <tr>
                                 <th style="width: 60px;">Pos</th>
-                                <th>Club Name</th>
+                                <th class="club-col">Club Name</th>
                                 <th style="width: 80px;">Matches</th>
                                 <th style="width: 60px;">W</th>
                                 <th style="width: 60px;">D</th>
@@ -413,9 +507,9 @@
                                     {% if club.uefa_points_total == '-' %}
                                         0
                                     {% else %}
-                                        <div style="font-weight:700">{{ club.uefa_points_total }}</div>
+                                        <div class="uefa-total">{{ club.uefa_points_total }}</div>
                                         {% if club.uefa_points_years %}
-                                        <div style="font-size:0.8em; color:#777; margin-top:4px">
+                                        <div class="uefa-years">
                                             ({{ club.uefa_points_years.values() | join(', ') }})
                                         </div>
                                         {% endif %}
@@ -430,11 +524,11 @@
                 <div class="legend">
                     <h3>📊 Column Descriptions</h3>
                     <div class="legend-item">
-                        <span class="legend-color" style="background: #667eea;"></span>
+                        <span class="legend-color" style="background: #4f5bd5;"></span>
                         <strong>Season Pts:</strong> Points earned in the selected league season
                     </div>
                     <div class="legend-item">
-                        <span class="legend-color" style="background: #764ba2;"></span>
+                        <span class="legend-color" style="background: #7b3fbf;"></span>
                         <strong>UEFA Pts:</strong> Total points from UEFA club competitions over 5 years
                     </div>
                     {% for spot in qualification_legend %}
@@ -443,7 +537,7 @@
                         {{ spot.title }}
                     </div>
                     {% endfor %}
-                    <div style="margin-top: 10px; color: #666;">
+                    <div class="legend-note">
                         <strong>Stats:</strong> W = Wins, D = Draws, L = Losses, GD = Goal Difference
                     </div>
                 </div>
@@ -452,8 +546,8 @@
                     Loading club data
                 </div>
                 {% else %}
-                <div style="background: white; padding: 40px; border-radius: 10px; text-align: center; color: #666;">
-                    <p style="font-size: 1.1em;">👆 Select a league from above to view standings and UEFA points</p>
+                <div class="placeholder">
+                    <p>👈 Select a league to view standings and UEFA points</p>
                 </div>
                 {% endif %}
             </div>
