@@ -400,8 +400,8 @@
                                 </tr>
                                 {% set current_group = club.group_name %}
                                 {% endif %}
-                            <tr>
-                                <td class="position">{{ club.position }}</td>
+                            <tr {% if club.qualification %}style="background-color: {{ club.qualification.color }}1f;" title="{{ club.qualification.title }}"{% endif %}>
+                                <td class="position" {% if club.qualification %}style="box-shadow: inset 6px 0 0 {{ club.qualification.color }};"{% endif %}>{{ club.position }}</td>
                                 <td class="club-name">{{ club.name }}</td>
                                 <td class="stat-cell">{{ club.played }}</td>
                                 <td class="stat-cell">{{ club.wins }}</td>
@@ -437,6 +437,12 @@
                         <span class="legend-color" style="background: #764ba2;"></span>
                         <strong>UEFA Pts:</strong> Total points from UEFA club competitions over 5 years
                     </div>
+                    {% for spot in qualification_legend %}
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: {{ spot.color }};"></span>
+                        {{ spot.title }}
+                    </div>
+                    {% endfor %}
                     <div style="margin-top: 10px; color: #666;">
                         <strong>Stats:</strong> W = Wins, D = Draws, L = Losses, GD = Goal Difference
                     </div>

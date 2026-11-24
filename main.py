@@ -187,6 +187,16 @@ def season_context(season_year):
     }
 
 
+def qualification_legend(clubs):
+    """Distinct European qualification spots present in the table, in table order."""
+    legend = {}
+    for club in clubs:
+        spot = club.get('qualification')
+        if spot:
+            legend.setdefault(spot['title'], spot['color'])
+    return [{"title": title, "color": color} for title, color in legend.items()]
+
+
 def build_league_summaries(uefa_points, current_league_id=None, current_standings=None, season_year=BASE_YEAR):
     """Build a summary dictionary for all leagues for the menu (standings are fetched in parallel)."""
     def fetch(league_id):
@@ -245,6 +255,7 @@ def merge_club_data(uefa_points, standings_data, league_country=None):
             'goals_against': club['goals_against'],
             'goal_diff': club['goal_diff'],
             'season_points': club['points'],
+            'qualification': club.get('qualification'),
             'uefa_points_total': uefa_total,
             'uefa_points_years': uefa_years,
             'matched': uefa_club_name is not None
@@ -311,6 +322,7 @@ def league_standings(league_id):
             league_name=LEAGUES[league_id]['name'],
             league_summary=league_summary,
             league_summaries=league_summaries,
+            qualification_legend=qualification_legend(merged_data),
             error=error_message,
             **ctx
         )

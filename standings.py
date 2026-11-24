@@ -5,6 +5,8 @@ from ranking import BASE_YEAR
 FOTMOB_URL = "https://www.fotmob.com/api/data/tltable"
 FOTMOB_LEAGUES_URL = "https://www.fotmob.com/api/data/leagues"
 FOTMOB_HEADERS = {"User-Agent": "Mozilla/5.0"}
+# FotMob legend keys for European competition spots (excludes e.g. relegation or league playoffs)
+EUROPEAN_LEGEND_PREFIXES = ("championsleague", "clqual", "europaleague", "euroqual", "europa_conference_league")
 
 
 def get_league_standings(league_id):
@@ -44,6 +46,17 @@ def _table_rows(data):
     return []
 
 
+def _european_qualification_by_position(data):
+    """Map 0-based table position -> {'title', 'color'} for positions leading to European competitions."""
+    by_position = {}
+    for entry in data.get("legend") or []:
+        if not str(entry.get("tKey", "")).startswith(EUROPEAN_LEGEND_PREFIXES):
+            continue
+        for index in entry.get("indices") or []:
+            by_position[index] = {"title": entry.get("title", ""), "color": entry.get("color")}
+    return by_position
+
+
 def extract_standings(data):
     """
     Extract relevant standing information from a FotMob table response.
@@ -52,6 +65,7 @@ def extract_standings(data):
     if not data:
         return []
 
+    qualification = _european_qualification_by_position(data)
     standings_list = []
     for item in _table_rows(data):
         goals_for, goals_against = 0, 0
@@ -60,6 +74,7 @@ def extract_standings(data):
         except ValueError:
             pass
 
+        position = int(item.get("idx") or 0)
         standings_list.append({
             "name": item.get("name", "Unknown"),
             "short_name": item.get("shortName") or item.get("name", ""),
@@ -71,7 +86,8 @@ def extract_standings(data):
             "goals_against": goals_against,
             "goal_diff": int(item.get("goalConDiff") or 0),
             "points": int(item.get("pts") or 0),
-            "position": int(item.get("idx") or 0)
+            "position": position,
+            "qualification": qualification.get(position - 1)
         })
 
     return standings_list
