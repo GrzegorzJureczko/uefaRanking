@@ -104,6 +104,13 @@
             font-weight: 600;
         }
 
+        .league-btn-preview-points {
+            font-size: 0.78em;
+            font-weight: 600;
+            color: #9aa2b3;
+            margin-top: 2px;
+        }
+
         .league-btn-points {
             font-size: 0.82em;
             font-weight: 600;
@@ -325,6 +332,11 @@
                             {% if league_points.years %}
                             <span class="league-btn-yearly">({{ league_points.years.values() | join(', ') }})</span>
                             {% endif %}
+                            {% endif %}
+                        {% else %}
+                            {% set league_points = league_summaries.get(league_id, {}) if league_summaries else {} %}
+                            {% if league_points and league_points.total != '-' %}
+                            <span class="league-btn-preview-points">{{ league_points.total }}</span>
                             {% endif %}
                         {% endif %}
                     </a>

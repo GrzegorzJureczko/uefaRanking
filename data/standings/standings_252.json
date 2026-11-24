@@ -1,9 +1,139 @@
 {
   "league": {
-    "name": "Croatian HNL",
-    "code": "hr",
+    "name": "HNL",
     "id": 252
   },
-  "fetched_at": 1778948735,
-  "clubs": []
+  "fetched_at": 1795554203,
+  "clubs": [
+    {
+      "name": "Hajduk Split",
+      "short_name": "Hajduk Split",
+      "played": 14,
+      "wins": 10,
+      "draws": 2,
+      "losses": 2,
+      "goals_for": 29,
+      "goals_against": 12,
+      "goal_diff": 17,
+      "points": 32,
+      "position": 1
+    },
+    {
+      "name": "Dinamo Zagreb",
+      "short_name": "Dinamo Zagreb",
+      "played": 13,
+      "wins": 9,
+      "draws": 1,
+      "losses": 3,
+      "goals_for": 31,
+      "goals_against": 17,
+      "goal_diff": 14,
+      "points": 28,
+      "position": 2
+    },
+    {
+      "name": "NK Varaždin",
+      "short_name": "NK Varaždin",
+      "played": 14,
+      "wins": 6,
+      "draws": 4,
+      "losses": 4,
+      "goals_for": 19,
+      "goals_against": 14,
+      "goal_diff": 5,
+      "points": 22,
+      "position": 3
+    },
+    {
+      "name": "Rijeka",
+      "short_name": "Rijeka",
+      "played": 13,
+      "wins": 6,
+      "draws": 3,
+      "losses": 4,
+      "goals_for": 21,
+      "goals_against": 18,
+      "goal_diff": 3,
+      "points": 21,
+      "position": 4
+    },
+    {
+      "name": "Osijek",
+      "short_name": "Osijek",
+      "played": 14,
+      "wins": 6,
+      "draws": 2,
+      "losses": 6,
+      "goals_for": 22,
+      "goals_against": 19,
+      "goal_diff": 3,
+      "points": 20,
+      "position": 5
+    },
+    {
+      "name": "NK Istra 1961",
+      "short_name": "NK Istra 1961",
+      "played": 14,
+      "wins": 5,
+      "draws": 4,
+      "losses": 5,
+      "goals_for": 26,
+      "goals_against": 22,
+      "goal_diff": 4,
+      "points": 19,
+      "position": 6
+    },
+    {
+      "name": "Slaven",
+      "short_name": "Slaven",
+      "played": 14,
+      "wins": 6,
+      "draws": 1,
+      "losses": 7,
+      "goals_for": 20,
+      "goals_against": 28,
+      "goal_diff": -8,
+      "points": 19,
+      "position": 7
+    },
+    {
+      "name": "Rudeš",
+      "short_name": "Rudeš",
+      "played": 14,
+      "wins": 5,
+      "draws": 1,
+      "losses": 8,
+      "goals_for": 16,
+      "goals_against": 29,
+      "goal_diff": -13,
+      "points": 16,
+      "position": 8
+    },
+    {
+      "name": "NK Lokomotiva",
+      "short_name": "NK Lokomotiva",
+      "played": 14,
+      "wins": 3,
+      "draws": 2,
+      "losses": 9,
+      "goals_for": 15,
+      "goals_against": 23,
+      "goal_diff": -8,
+      "points": 11,
+      "position": 9
+    },
+    {
+      "name": "HNK Gorica",
+      "short_name": "HNK Gorica",
+      "played": 14,
+      "wins": 1,
+      "draws": 4,
+      "losses": 9,
+      "goals_for": 10,
+      "goals_against": 27,
+      "goal_diff": -17,
+      "points": 7,
+      "position": 10
+    }
+  ]
 }

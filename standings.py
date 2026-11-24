@@ -1,104 +1,109 @@
 ﻿import json
+import time
+from pathlib import Path
+
 import requests
 
-SPORTSDB_HEADERS = {
-    "apikey": "6676965455"
-}
-
-# Map existing league IDs to TheSportsDB league IDs.
-# Only English Premier League is mapped here; add more mappings as needed.
-LEAGUE_ID_MAP = {
-    47: 4328,
-    55: 4332,  
-    87: 4335,
-    54: 4331,
-    53: 4334,
-    61: 4344,
-    57: 4337,
-    40: 4338,
-    71: 4339,
-    122: 4631,
-    135: 4336,
-    196: 4422,
-    46: 4340,
-    59: 4358,
-    136: 4630,
-    69: 4675,
-    38: 4621,
-    64: 4330,
-    67: 4347,
-    252: 4629,
-}
+FOTMOB_URL = "https://www.fotmob.com/api/data/tltable"
+FOTMOB_HEADERS = {"User-Agent": "Mozilla/5.0"}
+STANDINGS_CACHE_DIR = Path(__file__).resolve().parent / "data" / "standings"
 
 
 def get_league_standings(league_id):
     """
-    Fetch league standings from TheSportsDB API.
-    league_id: Local league ID used by the app.
+    Fetch league standings from FotMob (free, no API key).
+    league_id: League ID used by the app, which is also the FotMob league ID.
     """
-    sportsdb_league_id = LEAGUE_ID_MAP.get(league_id)
-    if sportsdb_league_id is None:
-        print(f"No SportsDB mapping for league ID {league_id}")
-        return None
-
-    api_key = SPORTSDB_HEADERS.get("apikey")
-    if not api_key:
-        print("No SportsDB API key configured in SPORTSDB_HEADERS")
-        return None
-
-    url = f"https://www.thesportsdb.com/api/v1/json/{api_key}/lookuptable.php?l={sportsdb_league_id}"
     try:
-        response = requests.get(url, timeout=20)
+        response = requests.get(
+            FOTMOB_URL, params={"leagueId": league_id}, headers=FOTMOB_HEADERS, timeout=20
+        )
         print(f"API Response Status: {response.status_code} {response.reason}")
         response.raise_for_status()
-        print(f"API Response Content: {response.text[:500]}")  # Print first 500 chars for debugging
 
-        standings = response.json()
-        if not isinstance(standings, dict) or "table" not in standings:
+        payload = response.json()
+        data = payload[0].get("data") if isinstance(payload, list) and payload else None
+        if not isinstance(data, dict):
             print(f"Unexpected response format for league {league_id}")
             return None
 
-        return standings
+        return data
     except Exception as e:
         print(f"Error fetching standings: {e}")
         return None
 
 
-def extract_standings(json_data):
+def _table_rows(data):
+    """Return the 'all' table rows, also handling leagues split into several tables."""
+    table = data.get("table")
+    if isinstance(table, dict) and table.get("all"):
+        return table["all"]
+
+    for group in data.get("tables") or []:
+        rows = (group.get("table") or {}).get("all")
+        if rows:
+            return rows
+    return []
+
+
+def extract_standings(data):
     """
-    Extract relevant standing information from TheSportsDB response.
+    Extract relevant standing information from a FotMob table response.
     Returns a list of dicts with club info.
     """
-    if not json_data or "table" not in json_data:
+    if not data:
         return []
 
     standings_list = []
-    for item in json_data["table"]:
-        club_info = {
-            "name": item.get("strTeam", "Unknown"),
-            "short_name": item.get("strTeam", ""),
-            "played": int(item.get("intPlayed") or 0),
-            "wins": int(item.get("intWin") or 0),
-            "draws": int(item.get("intDraw") or 0),
-            "losses": int(item.get("intLoss") or 0),
-            "goals_for": int(item.get("intGoalsFor") or 0),
-            "goals_against": int(item.get("intGoalsAgainst") or 0),
-            "goal_diff": int(item.get("intGoalDifference") or 0),
-            "points": int(item.get("intPoints") or 0),
-            "position": int(item.get("intRank") or 0)
-        }
-        standings_list.append(club_info)
+    for item in _table_rows(data):
+        goals_for, goals_against = 0, 0
+        try:
+            goals_for, goals_against = (int(x) for x in str(item.get("scoresStr", "")).split("-"))
+        except ValueError:
+            pass
+
+        standings_list.append({
+            "name": item.get("name", "Unknown"),
+            "short_name": item.get("shortName") or item.get("name", ""),
+            "played": int(item.get("played") or 0),
+            "wins": int(item.get("wins") or 0),
+            "draws": int(item.get("draws") or 0),
+            "losses": int(item.get("losses") or 0),
+            "goals_for": goals_for,
+            "goals_against": goals_against,
+            "goal_diff": int(item.get("goalConDiff") or 0),
+            "points": int(item.get("pts") or 0),
+            "position": int(item.get("idx") or 0)
+        })
 
     return standings_list
 
 
+def save_standings_cache(league_id, league_name, clubs):
+    """Store the standings so the league menu can sum UEFA points for leagues not currently opened."""
+    try:
+        STANDINGS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "league": {"name": league_name, "id": league_id},
+            "fetched_at": int(time.time()),
+            "clubs": clubs,
+        }
+        with (STANDINGS_CACHE_DIR / f"standings_{league_id}.json").open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+    except OSError as e:
+        print(f"Error saving standings cache: {e}")
+
+
 def get_all_standings(league_id=196):
     """Main function to get all standings data for a specific league"""
-    standings_data = get_league_standings(league_id)
-    if standings_data is None:
+    data = get_league_standings(league_id)
+    if data is None:
         return []
 
-    return extract_standings(standings_data)
+    clubs = extract_standings(data)
+    if clubs:
+        save_standings_cache(league_id, data.get("leagueName"), clubs)
+    return clubs
 
 
 if __name__ == "__main__":

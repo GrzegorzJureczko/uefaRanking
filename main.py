@@ -6,6 +6,8 @@ from pathlib import Path
 import logging
 import os
 import json
+import re
+import unicodedata
 
 app = Flask(__name__)
 
@@ -36,6 +38,42 @@ LEAGUES = {
 }
 
 
+NAME_NOISE_TOKENS = {'fc', 'afc', 'sc', 'ac', 'cf', 'sad', 'fk', 'bsc', 'sk', 'the', 'and'}
+# Spellings used by UEFA or the standings source that normalization can't reconcile
+NAME_ALIASES = {
+    r'\bman\b': 'manchester',
+    r'\batleti\b': 'atletico madrid',
+    r"\bnott'm\b": 'nottingham',
+    r'\bheart of midlothian\b': 'hearts',
+    r'\bdinamo zagreb\b': 'gnk dinamo',
+}
+
+
+def _name_tokens(name):
+    """Lowercase, accent-free word tokens without generic club-name noise (FC, AFC, '&', ...)."""
+    folded = unicodedata.normalize('NFKD', name.lower())
+    folded = ''.join(ch for ch in folded if not unicodedata.combining(ch))
+    for pattern, replacement in NAME_ALIASES.items():
+        folded = re.sub(pattern, replacement, folded)
+    tokens = re.findall(r'[a-z0-9]+', folded)
+    return [t for t in tokens if t not in NAME_NOISE_TOKENS and len(t) > 1 and not t.isdigit()]
+
+
+def name_similarity(standing_name, uefa_name):
+    """
+    Similarity of two club names in 0..1. Uses fuzzy matching on normalized names and
+    treats a name whose words are all contained in the other (e.g. 'Leverkusen' vs
+    'Bayer Leverkusen') as a strong match.
+    """
+    a, b = _name_tokens(standing_name), _name_tokens(uefa_name)
+    if not a or not b:
+        return SequenceMatcher(None, standing_name.lower(), uefa_name.lower()).ratio()
+    ratio = SequenceMatcher(None, ' '.join(a), ' '.join(b)).ratio()
+    if set(a) <= set(b) or set(b) <= set(a):
+        ratio = max(ratio, 0.9)
+    return ratio
+
+
 def fuzzy_match_clubs(uefa_clubs, standings_clubs, league_country=None):
     """
     Match clubs from both datasets using fuzzy string matching.
@@ -46,19 +84,18 @@ def fuzzy_match_clubs(uefa_clubs, standings_clubs, league_country=None):
     league_country_lower = league_country.lower() if league_country else None
     
     for standing_club in standings_clubs:
-        standing_name = standing_club['name'].lower()
         best_match = None
         best_ratio = 0
         
         for uefa_name, uefa_val in uefa_clubs.items():
-            uefa_name_lower = uefa_name.lower()
             if league_country_lower:
                 uefa_country = ''
                 if isinstance(uefa_val, dict):
                     uefa_country = str(uefa_val.get('country', '')).lower()
-                if uefa_country != league_country_lower:
+                # Cached snapshots may lack the country; don't filter those out
+                if uefa_country and uefa_country != league_country_lower:
                     continue
-            ratio = SequenceMatcher(None, standing_name, uefa_name_lower).ratio()
+            ratio = name_similarity(standing_club['name'], uefa_name)
             
             if ratio > best_ratio:
                 best_ratio = ratio
@@ -90,17 +127,19 @@ def get_league_uefa_summary(league_id, uefa_points, standings_data, league_count
         for uefa_name, uefa_val in uefa_points.items():
             if not isinstance(uefa_name, str):
                 continue
-            uefa_name_lower = uefa_name.lower()
             if league_country_lower and isinstance(uefa_val, dict):
                 uefa_country = str(uefa_val.get('country', '')).lower()
                 if uefa_country and uefa_country != league_country_lower:
                     continue
-            ratio = SequenceMatcher(None, club_name.lower(), uefa_name_lower).ratio()
+            ratio = name_similarity(club_name, uefa_name)
             if ratio > best_ratio:
                 best_ratio = ratio
                 matched_name = uefa_name
 
-        if matched_name is None or best_ratio <= 0.8:
+        if matched_name is None:
+            continue
+
+        if best_ratio <= 0.7:
             continue
 
         uefa_val = uefa_points.get(matched_name)
@@ -115,6 +154,9 @@ def get_league_uefa_summary(league_id, uefa_points, standings_data, league_count
 
     if not yearly_totals and matched_total == 0.0:
         return {"total": "-", "years": {}}
+
+    if matched_total == 0.0 and yearly_totals:
+        matched_total = sum(yearly_totals.values())
 
     return {
         "total": round(matched_total, 2),
