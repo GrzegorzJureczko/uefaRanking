@@ -1,5 +1,5 @@
-from flask import Flask, render_template, jsonify
-from ranking import get_uefa_points
+from flask import Flask, render_template, jsonify, request
+from ranking import get_uefa_points, BASE_YEAR, MIN_YEAR
 from standings import get_all_standings
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
@@ -162,12 +162,37 @@ def get_league_uefa_summary(league_id, uefa_points, standings_data, league_count
     }
 
 
-def build_league_summaries(uefa_points, current_league_id=None, current_standings=None):
+def parse_season():
+    """Read the ?season=<ending year> query parameter, falling back to the current season."""
+    season = request.args.get('season', type=int)
+    if season is None or not MIN_YEAR <= season <= BASE_YEAR:
+        return BASE_YEAR
+    return season
+
+
+def season_label(season_year):
+    """Season ending in 2027 -> '2026/27'."""
+    return f"{season_year - 1}/{str(season_year)[-2:]}"
+
+
+def season_context(season_year):
+    """Template variables for the season selector (newest season first)."""
+    return {
+        "season": season_year,
+        "season_name": season_label(season_year),
+        "seasons": [
+            {"year": year, "label": season_label(year)}
+            for year in range(BASE_YEAR, MIN_YEAR - 1, -1)
+        ],
+    }
+
+
+def build_league_summaries(uefa_points, current_league_id=None, current_standings=None, season_year=BASE_YEAR):
     """Build a summary dictionary for all leagues for the menu (standings are fetched in parallel)."""
     def fetch(league_id):
         if current_league_id and league_id == current_league_id:
             return current_standings
-        return get_all_standings(int(league_id))
+        return get_all_standings(int(league_id), season_year)
 
     with ThreadPoolExecutor(max_workers=len(LEAGUES)) as executor:
         standings_by_league = dict(zip(LEAGUES, executor.map(fetch, LEAGUES)))
@@ -232,30 +257,34 @@ def merge_club_data(uefa_points, standings_data, league_country=None):
 @app.route("/")
 def index():
     """Show league selector"""
+    season = parse_season()
+    ctx = season_context(season)
     try:
-        uefa_points = get_uefa_points()
+        uefa_points = get_uefa_points(season)
         if not uefa_points:
             uefa_points = {}
-        league_summaries = build_league_summaries(uefa_points)
-        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], league_summary={}, league_summaries=league_summaries)
+        league_summaries = build_league_summaries(uefa_points, season_year=season)
+        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], league_summary={}, league_summaries=league_summaries, **ctx)
     except Exception as e:
         logger.error(f"Error in index: {e}", exc_info=True)
-        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], league_summary={}, league_summaries={}, error=str(e))
+        return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], league_summary={}, league_summaries={}, error=str(e), **ctx)
 
 
 @app.route("/league/<league_id>")
 def league_standings(league_id):
     """Show standings for a specific league"""
+    season = parse_season()
+    ctx = season_context(season)
     try:
         if league_id not in LEAGUES:
             return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], league_summary={}, league_summaries={},
-                                 error="Invalid league selected")
+                                 error="Invalid league selected", **ctx)
         
-        logger.info(f"Fetching data for league {LEAGUES[league_id]['name']}...")
+        logger.info(f"Fetching data for league {LEAGUES[league_id]['name']} ({ctx['season_name']})...")
         
         # Fetch both datasets
-        uefa_points = get_uefa_points()
-        standings = get_all_standings(int(league_id))
+        uefa_points = get_uefa_points(season)
+        standings = get_all_standings(int(league_id), season)
         
         error_message = None
         if not uefa_points:
@@ -263,14 +292,14 @@ def league_standings(league_id):
             uefa_points = {}
         
         if not standings:
-            error_message = f"Failed to fetch standings for {LEAGUES[league_id]['name']}. The league may not be supported by the API."
+            error_message = f"Failed to fetch standings for {LEAGUES[league_id]['name']} ({ctx['season_name']}). The league or season may not be supported by the API."
             logger.warning(error_message)
             standings = []
         
         # Merge the data
         merged_data = merge_club_data(uefa_points, standings, LEAGUES[league_id]['country'])
         league_summary = get_league_uefa_summary(league_id, uefa_points, standings, LEAGUES[league_id]['country'])
-        league_summaries = build_league_summaries(uefa_points, current_league_id=league_id, current_standings=standings)
+        league_summaries = build_league_summaries(uefa_points, current_league_id=league_id, current_standings=standings, season_year=season)
         
         logger.info(f"Successfully fetched and merged data for {len(merged_data)} clubs")
         
@@ -282,24 +311,26 @@ def league_standings(league_id):
             league_name=LEAGUES[league_id]['name'],
             league_summary=league_summary,
             league_summaries=league_summaries,
-            error=error_message
+            error=error_message,
+            **ctx
         )
     
     except Exception as e:
         logger.error(f"Error in league_standings: {e}", exc_info=True)
         return render_template("index.html", leagues=LEAGUES, selected_league=league_id, 
-                             clubs=[], league_summary={}, league_summaries={}, error=str(e))
+                             clubs=[], league_summary={}, league_summaries={}, error=str(e), **ctx)
 
 
 @app.route("/api/clubs/<league_id>")
 def get_clubs_api(league_id):
-    """API endpoint to get clubs data as JSON for a specific league"""
+    """API endpoint to get clubs data as JSON for a specific league (optional ?season=<ending year>)"""
     try:
         if league_id not in LEAGUES:
             return jsonify({"error": "Invalid league ID"}), 400
         
-        uefa_points = get_uefa_points()
-        standings = get_all_standings(int(league_id))
+        season = parse_season()
+        uefa_points = get_uefa_points(season)
+        standings = get_all_standings(int(league_id), season)
         
         if not uefa_points:
             uefa_points = {}
@@ -309,6 +340,7 @@ def get_clubs_api(league_id):
         merged_data = merge_club_data(uefa_points, standings, LEAGUES[league_id]['country'])
         return jsonify({
             "league": LEAGUES[league_id],
+            "season": season,
             "clubs": merged_data
         })
     

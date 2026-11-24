@@ -1,6 +1,9 @@
 ﻿import requests
 
+from ranking import BASE_YEAR
+
 FOTMOB_URL = "https://www.fotmob.com/api/data/tltable"
+FOTMOB_LEAGUES_URL = "https://www.fotmob.com/api/data/leagues"
 FOTMOB_HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
@@ -74,14 +77,51 @@ def extract_standings(data):
     return standings_list
 
 
-def get_all_standings(league_id=196):
-    """Main function to get all standings data for a specific league"""
-    data = get_league_standings(league_id)
+def _season_labels(season_year):
+    """FotMob season names for a season ending in season_year: '2022/2023', or '2022' for calendar-year leagues."""
+    return [f"{season_year - 1}/{season_year}", str(season_year - 1)]
+
+
+def get_league_standings_for_season(league_id, season_year):
+    """
+    Fetch the final table of a past season from FotMob.
+    FotMob silently falls back to the current season for an unknown season name,
+    so the returned 'selectedSeason' is checked against the requested one.
+    """
+    try:
+        for label in _season_labels(season_year):
+            response = requests.get(
+                FOTMOB_LEAGUES_URL,
+                params={"id": league_id, "season": label},
+                headers=FOTMOB_HEADERS,
+                timeout=20,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if (payload.get("details") or {}).get("selectedSeason") != label:
+                continue
+
+            tables = payload.get("table")
+            data = tables[0].get("data") if isinstance(tables, list) and tables else None
+            return data if isinstance(data, dict) else None
+
+        print(f"Season {season_year} not available for league {league_id}")
+        return None
+    except Exception as e:
+        print(f"Error fetching standings for season {season_year}: {e}")
+        return None
+
+
+def get_all_standings(league_id=196, season_year=None):
+    """Main function to get all standings data for a specific league (and season ending in season_year)"""
+    if season_year is None or season_year == BASE_YEAR:
+        data = get_league_standings(league_id)
+    else:
+        data = get_league_standings_for_season(league_id, season_year)
     if data is None:
         return []
 
     return extract_standings(data)
-    return clubs
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ import requests
 url = "https://comp.uefa.com/v2/coefficients"
 PAGE_SIZE = 500
 BASE_YEAR = 2027
+# Oldest season with both UEFA coefficients (from 2005) and FotMob standings (from 2010/11)
+MIN_YEAR = 2011
 # UEFA country names that differ from the ones used in LEAGUES (main.py)
 COUNTRY_ALIASES = {"Czechia": "Czech Republic", "Türkiye": "Turkey"}
 OVERRIDES_PATH = Path(__file__).resolve().parent / "club_name_overrides.json"
@@ -110,11 +112,11 @@ def fill_missing_years(ranking, base_year):
     return ranking
 
 
-def get_uefa_points():
-    """Main function to get all UEFA points data"""
-    rank = getUEFARanking(BASE_YEAR)
+def get_uefa_points(base_year=BASE_YEAR):
+    """Main function to get all UEFA points data (5 seasons ending in base_year)"""
+    rank = getUEFARanking(base_year)
     ranking = ExtractRanking(rank)
-    ranking = fill_missing_years(ranking, BASE_YEAR)
+    ranking = fill_missing_years(ranking, base_year)
     overrides = load_club_name_overrides()
     return apply_club_name_overrides(ranking, overrides)
 
