@@ -1,11 +1,9 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify
 from ranking import get_uefa_points
 from standings import get_all_standings
+from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
-from pathlib import Path
 import logging
-import os
-import json
 import re
 import unicodedata
 
@@ -92,7 +90,7 @@ def fuzzy_match_clubs(uefa_clubs, standings_clubs, league_country=None):
                 uefa_country = ''
                 if isinstance(uefa_val, dict):
                     uefa_country = str(uefa_val.get('country', '')).lower()
-                # Cached snapshots may lack the country; don't filter those out
+                # Skip the country filter for clubs without a known country
                 if uefa_country and uefa_country != league_country_lower:
                     continue
             ratio = name_similarity(standing_club['name'], uefa_name)
@@ -164,40 +162,25 @@ def get_league_uefa_summary(league_id, uefa_points, standings_data, league_count
     }
 
 
-def get_cached_standings(league_id):
-    """Load standings from the local JSON cache when available."""
-    cache_path = Path(__file__).resolve().parent / "data" / "standings" / f"standings_{league_id}.json"
-    if not cache_path.exists():
-        return None
-
-    try:
-        with cache_path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except Exception:
-        return None
-
-    clubs = payload.get("clubs") if isinstance(payload, dict) else None
-    if not isinstance(clubs, list):
-        return None
-
-    return clubs
-
-
 def build_league_summaries(uefa_points, current_league_id=None, current_standings=None):
-    """Build a summary dictionary for all leagues for the menu."""
-    summaries = {}
-    for league_id in LEAGUES:
-        standings_data = current_standings if current_league_id and league_id == current_league_id else get_cached_standings(league_id)
-        if standings_data is None:
-            standings_data = []
-        league_info = LEAGUES[league_id]
-        summaries[league_id] = get_league_uefa_summary(
+    """Build a summary dictionary for all leagues for the menu (standings are fetched in parallel)."""
+    def fetch(league_id):
+        if current_league_id and league_id == current_league_id:
+            return current_standings
+        return get_all_standings(int(league_id))
+
+    with ThreadPoolExecutor(max_workers=len(LEAGUES)) as executor:
+        standings_by_league = dict(zip(LEAGUES, executor.map(fetch, LEAGUES)))
+
+    return {
+        league_id: get_league_uefa_summary(
             league_id,
             uefa_points,
-            standings_data,
-            league_info.get("country"),
+            standings_by_league[league_id] or [],
+            LEAGUES[league_id].get("country"),
         )
-    return summaries
+        for league_id in LEAGUES
+    }
 
 
 def merge_club_data(uefa_points, standings_data, league_country=None):

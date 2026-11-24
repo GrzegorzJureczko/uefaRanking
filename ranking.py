@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 import requests
-import os
-import time
 
 url = "https://comp.uefa.com/v2/coefficients"
 PAGE_SIZE = 500
@@ -10,8 +8,6 @@ BASE_YEAR = 2027
 # UEFA country names that differ from the ones used in LEAGUES (main.py)
 COUNTRY_ALIASES = {"Czechia": "Czech Republic", "Türkiye": "Turkey"}
 OVERRIDES_PATH = Path(__file__).resolve().parent / "club_name_overrides.json"
-CACHE_PATH = Path(__file__).resolve().parent / "data" / "cache.json"
-CACHE_KEY = f"uefa_points_{BASE_YEAR}"
 
 def load_club_name_overrides():
     """Load optional manual club name overrides from JSON."""
@@ -105,31 +101,6 @@ def ExtractRanking(members):
     return ranking_dict
 
 
-def load_cached_ranking():
-    """Load the last saved UEFA ranking snapshot (already extracted format)."""
-    try:
-        with CACHE_PATH.open("r", encoding="utf-8") as file:
-            return json.load(file).get(CACHE_KEY, {}).get("data", {})
-    except (FileNotFoundError, ValueError, AttributeError) as e:
-        print(f"Error loading cached UEFA ranking: {e}")
-        return {}
-
-
-def save_cached_ranking(ranking):
-    """Store the freshly fetched UEFA ranking, keeping other cache entries intact."""
-    try:
-        try:
-            with CACHE_PATH.open("r", encoding="utf-8") as file:
-                cache = json.load(file)
-        except (FileNotFoundError, ValueError):
-            cache = {}
-        cache[CACHE_KEY] = {"ts": int(time.time()), "data": ranking}
-        with CACHE_PATH.open("w", encoding="utf-8") as file:
-            json.dump(cache, file, ensure_ascii=False)
-    except OSError as e:
-        print(f"Error saving UEFA ranking cache: {e}")
-
-
 def fill_missing_years(ranking, base_year):
     """Give every club all 5 ranking seasons (oldest first), using 0 for seasons without European games."""
     seasons = [str(year) for year in range(base_year - 4, base_year + 1)]
@@ -143,11 +114,6 @@ def get_uefa_points():
     """Main function to get all UEFA points data"""
     rank = getUEFARanking(BASE_YEAR)
     ranking = ExtractRanking(rank)
-    if ranking:
-        save_cached_ranking(ranking)
-    else:
-        print("UEFA ranking API unavailable, using cached snapshot.")
-        ranking = load_cached_ranking()
     ranking = fill_missing_years(ranking, BASE_YEAR)
     overrides = load_club_name_overrides()
     return apply_club_name_overrides(ranking, overrides)

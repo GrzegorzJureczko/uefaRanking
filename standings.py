@@ -1,12 +1,7 @@
-﻿import json
-import time
-from pathlib import Path
-
-import requests
+﻿import requests
 
 FOTMOB_URL = "https://www.fotmob.com/api/data/tltable"
 FOTMOB_HEADERS = {"User-Agent": "Mozilla/5.0"}
-STANDINGS_CACHE_DIR = Path(__file__).resolve().parent / "data" / "standings"
 
 
 def get_league_standings(league_id):
@@ -79,30 +74,13 @@ def extract_standings(data):
     return standings_list
 
 
-def save_standings_cache(league_id, league_name, clubs):
-    """Store the standings so the league menu can sum UEFA points for leagues not currently opened."""
-    try:
-        STANDINGS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "league": {"name": league_name, "id": league_id},
-            "fetched_at": int(time.time()),
-            "clubs": clubs,
-        }
-        with (STANDINGS_CACHE_DIR / f"standings_{league_id}.json").open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-    except OSError as e:
-        print(f"Error saving standings cache: {e}")
-
-
 def get_all_standings(league_id=196):
     """Main function to get all standings data for a specific league"""
     data = get_league_standings(league_id)
     if data is None:
         return []
 
-    clubs = extract_standings(data)
-    if clubs:
-        save_standings_cache(league_id, data.get("leagueName"), clubs)
+    return extract_standings(data)
     return clubs
 
 
