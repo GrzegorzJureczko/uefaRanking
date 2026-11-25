@@ -3,6 +3,12 @@
 {% block title %}UEFA Points Efficiency{% endblock %}
 
 {% block extra_style %}
+        /* Scroll inside the container so the horizontal scrollbar is always visible; headers stay sticky */
+        .efficiency-scroll {
+            overflow: auto;
+            max-height: calc(100vh - 32px);
+        }
+
         .efficiency-table th.country-col,
         .efficiency-table td.country-cell {
             position: sticky;
@@ -12,6 +18,26 @@
             font-weight: 600;
             white-space: nowrap;
             z-index: 1;
+        }
+
+        .efficiency-table tbody {
+            counter-reset: row;
+        }
+
+        .efficiency-table tbody tr {
+            counter-increment: row;
+        }
+
+        /* Row number by position: it stays in place when the rows are sorted */
+        .efficiency-table td.country-cell::before {
+            content: counter(row);
+            display: inline-block;
+            min-width: 2ch;
+            margin-right: 10px;
+            text-align: right;
+            color: var(--muted);
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
         }
 
         .efficiency-table thead th.country-col {
@@ -128,6 +154,29 @@
             background: rgba(79, 91, 213, 0.18);
         }
 
+        .efficiency-extra {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .efficiency-extra .efficiency-status {
+            margin: 0;
+        }
+
+        .efficiency-extra .header-btn {
+            cursor: pointer;
+            border: none;
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .efficiency-extra .header-btn:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
         .efficiency-table td.excluded {
             opacity: 0.4;
         }
@@ -144,7 +193,7 @@
 {% block content %}
 <div class="efficiency-status" id="status">Loading seasons&hellip;</div>
 
-<div class="table-container">
+<div class="table-container efficiency-scroll">
     <table class="efficiency-table">
         <thead>
             <tr>
@@ -173,6 +222,14 @@
             {% endfor %}
         </tbody>
     </table>
+</div>
+
+<div class="efficiency-extra">
+    <button type="button" class="header-btn" id="load-other">Load other countries</button>
+    <span class="efficiency-status" id="other-status">
+        The remaining UEFA federations (no league table available, so no value for the current season).
+        Loaded only on request; click a value to open that country's top division.
+    </span>
 </div>
 
 <div class="legend">
@@ -212,12 +269,14 @@
         cell.setAttribute('role', 'link');
     }
 
-    function fillCell(cell, data) {
+    function fillCell(cell, data, hasTable = true) {
         cell.classList.remove('empty-cell');
         if (!data || data.percent === null) {
             cell.classList.add('empty-cell');
             cell.textContent = 'n/a';
-            cell.title = 'No data: the league table has no European qualification spots yet';
+            cell.title = hasTable
+                ? 'No data: the league table has no European qualification spots yet'
+                : 'No data: no next season to check which clubs played in Europe';
             return;
         }
         cell.textContent = data.percent.toFixed(1) + '%';
@@ -317,23 +376,95 @@
         }
     }
 
-    async function loadAll() {
+    async function runQueue(loader) {
         const queue = [...SEASONS].reverse();
         let done = 0;
         let failed = 0;
         const worker = async () => {
             while (queue.length) {
-                const ok = await loadSeason(queue.shift());
+                const ok = await loader(queue.shift());
                 done++;
                 if (!ok) failed++;
                 statusEl.textContent = `Loaded ${done} of ${SEASONS.length} seasons…`;
             }
         };
         await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+        return failed;
+    }
+
+    async function loadAll() {
+        const failed = await runQueue(loadSeason);
         statusEl.textContent = failed
             ? `Done — ${failed} season(s) failed to load, reload the page to retry.`
             : 'Done.';
     }
+
+    function getOtherRow(country) {
+        const key = `other:${country}`;
+        let row = rows.find(r => r.dataset.league === key);
+        if (row) return row;
+        row = document.createElement('tr');
+        row.dataset.league = key;
+        const name = document.createElement('td');
+        name.className = 'country-cell';
+        name.textContent = country;
+        row.append(name);
+        SEASONS.forEach(season => {
+            const cell = document.createElement('td');
+            cell.className = 'value-cell empty-cell';
+            cell.dataset.season = season;
+            cell.classList.toggle('excluded', excluded.has(String(season)));
+            cell.textContent = '…';
+            row.append(cell);
+        });
+        const avg = document.createElement('td');
+        avg.className = 'value-cell avg-cell';
+        avg.textContent = '–';
+        row.append(avg);
+        tbody.append(row);
+        rows.push(row);
+        return row;
+    }
+
+    async function loadOtherSeason(season) {
+        try {
+            const response = await fetch(`/api/efficiency/${season}/other`);
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || response.statusText);
+            Object.entries(payload.countries).forEach(([country, data]) => {
+                const row = getOtherRow(country);
+                const cell = row.querySelector(`td[data-season="${season}"]`);
+                fillCell(cell, data, false);
+                const leagueId = payload.league_ids[country];
+                if (leagueId) makeLink(cell, leagueId, season);
+                if (data && data.percent !== null) {
+                    (values[row.dataset.league] ||= {})[String(season)] = data.percent;
+                }
+                updateAverage(row);
+            });
+            if (sortState) applySort();
+            return true;
+        } catch (error) {
+            console.error(error);
+            return false;
+        }
+    }
+
+    const otherButton = document.getElementById('load-other');
+    const otherStatusEl = document.getElementById('other-status');
+    otherButton.addEventListener('click', async () => {
+        otherButton.disabled = true;
+        otherStatusEl.textContent = 'Loading other countries…';
+        const failed = await runQueue(loadOtherSeason);
+        statusEl.textContent = 'Done.';
+        if (failed) {
+            otherButton.disabled = false;
+            otherButton.textContent = 'Retry other countries';
+            otherStatusEl.textContent = `${failed} season(s) failed to load.`;
+        } else {
+            otherStatusEl.textContent = 'Other UEFA federations loaded (no value for the current season; click a value to open the league).';
+        }
+    });
 
     document.querySelectorAll('.sort-btn').forEach(btn => {
         btn.addEventListener('click', event => {
@@ -361,6 +492,14 @@
         const cell = event.target.closest('td[data-href]');
         if (cell && event.key === 'Enter') window.location.href = cell.dataset.href;
     });
+
+    function fitTableHeight() {
+        const container = document.querySelector('.efficiency-scroll');
+        const top = container.getBoundingClientRect().top + window.scrollY;
+        container.style.maxHeight = `${Math.max(window.innerHeight - top - 16, 320)}px`;
+    }
+    window.addEventListener('resize', fitTableHeight);
+    fitTableHeight();
 
     loadAll();
 </script>

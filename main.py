@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from cache import TTLCache
 from ranking import get_uefa_points, season_cache_ttl, BASE_YEAR, MIN_YEAR, CURRENT_SEASON_CACHE_TTL, HISTORIC_SEASON_CACHE_TTL
-from standings import get_all_standings
+from standings import get_all_standings, get_top_leagues, FOTMOB_COUNTRY_ALIASES
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 import logging
@@ -459,6 +459,90 @@ def get_efficiency_api(season_year):
         return jsonify({"error": str(e)}), 500
 
 
+def other_countries(uefa_points):
+    """UEFA federations (sorted) that have no league in LEAGUES."""
+    known = {league['country'].lower() for league in LEAGUES.values()}
+    return sorted({
+        club['country'] for club in uefa_points.values()
+        if isinstance(club, dict) and club.get('country') not in (None, 'Unknown')
+        and club['country'].lower() not in known
+    })
+
+
+def get_other_leagues(season_year=BASE_YEAR):
+    """
+    Top divisions of the federations missing from LEAGUES as {league_id: {'name', 'id', 'country'}}
+    (federations without UEFA clubs in that season's ranking or without a FotMob league are left out).
+    Only looked up on request.
+    """
+    uefa_points = get_uefa_points(season_year)
+    top_leagues = get_top_leagues()
+    if not uefa_points or not top_leagues:
+        return {}
+
+    leagues = {}
+    for country in other_countries(uefa_points):
+        league = top_leagues.get(FOTMOB_COUNTRY_ALIASES.get(country, country))
+        if league:
+            leagues[str(league['id'])] = {
+                'name': f"{country}: {league['name']}", 'id': league['id'], 'country': country
+            }
+    return leagues
+
+
+def find_league(league_id, season_year=BASE_YEAR):
+    """League info for a main league or (looked up only when needed) one of the other leagues."""
+    return LEAGUES.get(league_id) or get_other_leagues(season_year).get(league_id)
+
+
+def get_other_countries_efficiency(season_year):
+    """
+    Points efficiency of the federations that have no league in LEAGUES (no FotMob table), or None if UEFA data
+    is unavailable. Only past seasons have a value (clubs that played in Europe the next season); computed on demand.
+    """
+    uefa_points = get_uefa_points(season_year)
+    if not uefa_points:
+        return None
+
+    countries = other_countries(uefa_points)
+    if season_year >= BASE_YEAR:
+        return {country: None for country in countries}
+
+    participants = european_participants(get_uefa_points(season_year + 1) or {}, season_year + 1)
+    if not participants:
+        return {country: None for country in countries}
+    return {country: calculate_country_efficiency(uefa_points, country, participants) for country in countries}
+
+
+@app.route("/api/efficiency/<int:season_year>/other")
+def get_other_efficiency_api(season_year):
+    """API endpoint with points efficiency per remaining UEFA federation for one season (loaded on demand)"""
+    if not MIN_YEAR <= season_year <= BASE_YEAR:
+        return jsonify({"error": "Invalid season"}), 400
+    try:
+        result = get_other_countries_efficiency(season_year)
+        if result is None:
+            return jsonify({"error": "UEFA ranking unavailable"}), 502
+        league_ids = {league['country']: league_id for league_id, league in get_other_leagues(season_year).items()}
+        return jsonify({"season": season_year, "countries": result, "league_ids": league_ids})
+    except Exception as e:
+        logger.error(f"Error in get_other_efficiency_api: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/other-leagues")
+def get_other_leagues_api():
+    """API endpoint with the top divisions of the remaining UEFA federations (loaded on demand)"""
+    try:
+        leagues = get_other_leagues(parse_season())
+        if not leagues:
+            return jsonify({"error": "League list unavailable"}), 502
+        return jsonify({"leagues": [{"league_id": league_id, **league} for league_id, league in leagues.items()]})
+    except Exception as e:
+        logger.error(f"Error in get_other_leagues_api: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/")
 def index():
     """Show league selector"""
@@ -481,11 +565,13 @@ def league_standings(league_id):
     season = parse_season()
     ctx = season_context(season)
     try:
-        if league_id not in LEAGUES:
+        league = find_league(league_id, season)
+        if league is None:
             return render_template("index.html", leagues=LEAGUES, selected_league=None, clubs=[], league_summary={}, league_summaries={},
                                  error="Invalid league selected", **ctx)
-        
-        logger.info(f"Fetching data for league {LEAGUES[league_id]['name']} ({ctx['season_name']})...")
+        is_main_league = league_id in LEAGUES
+
+        logger.info(f"Fetching data for league {league['name']} ({ctx['season_name']})...")
         
         # Fetch both datasets
         uefa_points = get_uefa_points(season)
@@ -497,14 +583,19 @@ def league_standings(league_id):
             uefa_points = {}
         
         if not standings:
-            error_message = f"Failed to fetch standings for {LEAGUES[league_id]['name']} ({ctx['season_name']}). The league or season may not be supported by the API."
+            error_message = f"Failed to fetch standings for {league['name']} ({ctx['season_name']}). The league or season may not be supported by the API."
             logger.warning(error_message)
             standings = []
         
         # Merge the data
-        merged_data = merge_club_data(uefa_points, standings, LEAGUES[league_id]['country'])
-        league_summaries = build_league_summaries(uefa_points, current_league_id=league_id, current_standings=standings, season_year=season)
-        league_summary = league_summaries[league_id]
+        merged_data = merge_club_data(uefa_points, standings, league['country'])
+        if is_main_league:
+            league_summaries = build_league_summaries(uefa_points, current_league_id=league_id, current_standings=standings, season_year=season)
+            league_summary = league_summaries[league_id]
+        else:
+            # Other leagues are not part of the menu summaries; only reuse the ones that are already cached
+            league_summaries = _summaries_cache.get(season) or {}
+            league_summary = get_league_uefa_summary(league_id, uefa_points, standings, league['country'])
         
         logger.info(f"Successfully fetched and merged data for {len(merged_data)} clubs")
         
@@ -512,8 +603,9 @@ def league_standings(league_id):
             "index.html",
             clubs=merged_data,
             leagues=LEAGUES,
+            other_leagues=None if is_main_league else get_other_leagues(season),
             selected_league=league_id,
-            league_name=LEAGUES[league_id]['name'],
+            league_name=league['name'],
             league_summary=league_summary,
             league_summaries=league_summaries,
             qualification_legend=qualification_legend(merged_data),
@@ -531,10 +623,11 @@ def league_standings(league_id):
 def get_clubs_api(league_id):
     """API endpoint to get clubs data as JSON for a specific league (optional ?season=<ending year>)"""
     try:
-        if league_id not in LEAGUES:
+        season = parse_season()
+        league = find_league(league_id, season)
+        if league is None:
             return jsonify({"error": "Invalid league ID"}), 400
         
-        season = parse_season()
         uefa_points = get_uefa_points(season)
         standings = get_all_standings(int(league_id), season)
         
@@ -543,9 +636,9 @@ def get_clubs_api(league_id):
         if not standings:
             standings = []
         
-        merged_data = merge_club_data(uefa_points, standings, LEAGUES[league_id]['country'])
+        merged_data = merge_club_data(uefa_points, standings, league['country'])
         return jsonify({
-            "league": LEAGUES[league_id],
+            "league": league,
             "season": season,
             "clubs": merged_data
         })

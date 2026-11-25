@@ -4,7 +4,11 @@ from ranking import BASE_YEAR, season_cache_ttl
 
 FOTMOB_URL = "https://www.fotmob.com/api/data/tltable"
 FOTMOB_LEAGUES_URL = "https://www.fotmob.com/api/data/leagues"
+FOTMOB_ALL_LEAGUES_URL = "https://www.fotmob.com/api/data/allLeagues"
 FOTMOB_HEADERS = {"User-Agent": "Mozilla/5.0"}
+# UEFA country names spelled differently by FotMob
+FOTMOB_COUNTRY_ALIASES = {"Bosnia and Herzegovina": "Bosnia-Herzegovina", "Republic of Ireland": "Ireland"}
+TOP_LEAGUES_CACHE_TTL = 24 * 3600
 # FotMob legend keys for European competition spots (excludes e.g. relegation or league playoffs)
 EUROPEAN_LEGEND_PREFIXES = ("championsleague", "clqual", "europaleague", "euroqual", "europa_conference_league")
 
@@ -162,6 +166,26 @@ def get_all_standings(league_id=196, season_year=None):
         return []
 
     return extract_standings(data)
+
+
+@ttl_cache(TOP_LEAGUES_CACHE_TTL)
+def get_top_leagues():
+    """
+    Top division of every country known to FotMob as {FotMob country name: {'id', 'name'}}.
+    FotMob lists a country's top division first (cups and qualification rounds follow).
+    """
+    try:
+        response = session.get(FOTMOB_ALL_LEAGUES_URL, headers=FOTMOB_HEADERS, timeout=20)
+        response.raise_for_status()
+        countries = response.json().get("countries") or []
+        return {
+            country["name"]: {"id": country["leagues"][0]["id"], "name": country["leagues"][0]["name"]}
+            for country in countries
+            if country.get("name") and country.get("leagues")
+        }
+    except Exception as e:
+        print(f"Error fetching FotMob league list: {e}")
+        return None
 
 
 if __name__ == "__main__":

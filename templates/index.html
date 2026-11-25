@@ -174,6 +174,42 @@
             gap: 12px;
         }
 
+        .other-leagues {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border);
+        }
+
+        .other-leagues .league-buttons:empty {
+            display: none;
+        }
+
+        .load-other-btn {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px dashed var(--primary);
+            border-radius: 10px;
+            background: transparent;
+            color: var(--primary-dark);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .load-other-btn:hover:not(:disabled) {
+            background: #eef0fb;
+        }
+
+        .load-other-btn:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        .other-leagues-status {
+            margin-top: 8px;
+            font-size: 0.78em;
+            color: var(--muted);
+        }
+
         .league-btn-logo {
             flex: 0 0 36px;
             width: 36px;
@@ -534,6 +570,27 @@
                     </a>
                     {% endfor %}
                 </div>
+
+                <div class="other-leagues">
+                    <div class="league-buttons" id="other-league-buttons">
+                        {% for league_id, league_info in (other_leagues or {}).items() %}
+                        <a href="/league/{{ league_id }}?season={{ season }}"
+                           class="league-btn {% if selected_league == league_id %}active{% endif %}">
+                            <span class="league-btn-logo">
+                                <img src="https://images.fotmob.com/image_resources/logo/leaguelogo/{{ league_info.id }}.png"
+                                     alt="" width="28" height="28" loading="lazy" onerror="this.style.visibility='hidden'">
+                            </span>
+                            <span class="league-btn-text">
+                                <span class="league-btn-name">{{ league_info.name }}</span>
+                            </span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% if not other_leagues %}
+                    <button type="button" class="load-other-btn" id="load-other-leagues">Load other leagues</button>
+                    <div class="other-leagues-status" id="other-leagues-status">Top divisions of the remaining UEFA federations, loaded only on request.</div>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="table-panel">
@@ -616,6 +673,51 @@
         </div>
         {% endblock %}
     </div>
-    {% block scripts %}{% endblock %}
+    {% block scripts %}
+    <script>
+        const loadOtherButton = document.getElementById('load-other-leagues');
+        if (loadOtherButton) {
+            const statusEl = document.getElementById('other-leagues-status');
+            const container = document.getElementById('other-league-buttons');
+            loadOtherButton.addEventListener('click', async () => {
+                loadOtherButton.disabled = true;
+                statusEl.textContent = 'Loading…';
+                try {
+                    const response = await fetch('/api/other-leagues?season={{ season }}');
+                    const payload = await response.json();
+                    if (!response.ok) throw new Error(payload.error || response.statusText);
+                    payload.leagues.forEach(league => {
+                        const link = document.createElement('a');
+                        link.className = 'league-btn';
+                        link.href = `/league/${league.league_id}?season={{ season }}`;
+                        const logo = document.createElement('span');
+                        logo.className = 'league-btn-logo';
+                        const img = document.createElement('img');
+                        img.src = `https://images.fotmob.com/image_resources/logo/leaguelogo/${league.id}.png`;
+                        img.alt = '';
+                        img.width = img.height = 28;
+                        img.loading = 'lazy';
+                        img.onerror = () => { img.style.visibility = 'hidden'; };
+                        logo.append(img);
+                        const text = document.createElement('span');
+                        text.className = 'league-btn-text';
+                        const name = document.createElement('span');
+                        name.className = 'league-btn-name';
+                        name.textContent = league.name;
+                        text.append(name);
+                        link.append(logo, text);
+                        container.append(link);
+                    });
+                    loadOtherButton.remove();
+                    statusEl.textContent = `${payload.leagues.length} more leagues loaded.`;
+                } catch (error) {
+                    loadOtherButton.disabled = false;
+                    loadOtherButton.textContent = 'Retry loading other leagues';
+                    statusEl.textContent = `Failed to load: ${error.message}`;
+                }
+            });
+        }
+    </script>
+    {% endblock %}
 </body>
 </html>
