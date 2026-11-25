@@ -81,36 +81,40 @@ def name_similarity(standing_name, uefa_name):
     return ratio
 
 
+MATCH_THRESHOLD = 0.8
+
+
 def fuzzy_match_clubs(uefa_clubs, standings_clubs, league_country=None):
     """
     Match clubs from both datasets using fuzzy string matching.
     Returns a mapping of standings club names to UEFA club names.
     If league_country is provided, only match clubs whose UEFA country matches it.
     """
-    mapping = {}
     league_country_lower = league_country.lower() if league_country else None
-    
+
+    candidates = []
     for standing_club in standings_clubs:
-        best_match = None
-        best_ratio = 0
-        
         for uefa_name, uefa_val in uefa_clubs.items():
-            if league_country_lower:
-                uefa_country = ''
-                if isinstance(uefa_val, dict):
-                    uefa_country = str(uefa_val.get('country', '')).lower()
+            if not isinstance(uefa_name, str):
+                continue
+            if league_country_lower and isinstance(uefa_val, dict):
+                uefa_country = str(uefa_val.get('country', '')).lower()
                 # Skip the country filter for clubs without a known country
                 if uefa_country and uefa_country != league_country_lower:
                     continue
             ratio = name_similarity(standing_club['name'], uefa_name)
-            
-            if ratio > best_ratio:
-                best_ratio = ratio
-                best_match = uefa_name
-        
-        # Only match if similarity is high enough (80%)
-        if best_ratio > 0.8:
-            mapping[standing_club['name']] = best_match
+            # Only match if similarity is high enough (80%)
+            if ratio > MATCH_THRESHOLD:
+                candidates.append((ratio, standing_club['name'], uefa_name))
+
+    # Best pairs first, so a UEFA club is never shared (e.g. 'Paris FC' vs 'Paris Saint-Germain')
+    mapping = {}
+    used_uefa = set()
+    for ratio, standing_name, uefa_name in sorted(candidates, key=lambda c: -c[0]):
+        if standing_name in mapping or uefa_name in used_uefa:
+            continue
+        mapping[standing_name] = uefa_name
+        used_uefa.add(uefa_name)
     logger.info(f"Fuzzy matching results: {mapping}")
     return mapping
 
@@ -120,33 +124,15 @@ def get_league_uefa_summary(league_id, uefa_points, standings_data, league_count
     if not isinstance(uefa_points, dict):
         return {"total": "-", "years": {}}
 
-    league_country_lower = league_country.lower() if league_country else None
     yearly_totals = {}
     matched_total = 0.0
 
-    for club in standings_data:
-        club_name = club.get("name")
-        if not club_name:
-            continue
+    named_clubs = [club for club in standings_data if club.get("name")]
+    club_mapping = fuzzy_match_clubs(uefa_points, named_clubs, league_country)
 
-        matched_name = None
-        best_ratio = 0.0
-        for uefa_name, uefa_val in uefa_points.items():
-            if not isinstance(uefa_name, str):
-                continue
-            if league_country_lower and isinstance(uefa_val, dict):
-                uefa_country = str(uefa_val.get('country', '')).lower()
-                if uefa_country and uefa_country != league_country_lower:
-                    continue
-            ratio = name_similarity(club_name, uefa_name)
-            if ratio > best_ratio:
-                best_ratio = ratio
-                matched_name = uefa_name
-
+    for club in named_clubs:
+        matched_name = club_mapping.get(club["name"])
         if matched_name is None:
-            continue
-
-        if best_ratio <= 0.7:
             continue
 
         uefa_val = uefa_points.get(matched_name)

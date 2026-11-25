@@ -4,11 +4,28 @@ from main import (
     calculate_country_efficiency,
     calculate_points_efficiency,
     european_participants,
+    fuzzy_match_clubs,
     get_league_uefa_summary,
 )
 
 
 class LeaguePointsSummaryTests(unittest.TestCase):
+    def test_fuzzy_match_clubs_never_shares_a_uefa_club(self):
+        uefa_points = {
+            "Paris Saint-Germain": {"country": "France", "total": 127.0, "years": {}},
+            "Dundee United": {"country": "Scotland", "total": 5.0, "years": {}},
+        }
+
+        paris = fuzzy_match_clubs(
+            uefa_points, [{"name": "Paris FC"}, {"name": "Paris Saint-Germain"}], "France"
+        )
+        dundee = fuzzy_match_clubs(
+            uefa_points, [{"name": "Dundee FC"}, {"name": "Dundee United"}], "Scotland"
+        )
+
+        self.assertEqual(paris, {"Paris Saint-Germain": "Paris Saint-Germain"})
+        self.assertEqual(dundee, {"Dundee United": "Dundee United"})
+
     def test_get_league_uefa_summary_sums_matching_club_points(self):
         uefa_points = {
             "Arsenal": {"total": 81.0, "years": {"2022": 0, "2023": 17, "2024": 22, "2025": 36, "2026": 6}},
