@@ -137,7 +137,7 @@
             padding: 20px;
             border-radius: var(--radius);
             box-shadow: var(--shadow);
-            flex: 0 0 280px;
+            flex: 0 0 340px;
             position: sticky;
             top: 20px;
             max-height: calc(100vh - 40px);
@@ -255,12 +255,27 @@
 
         .league-btn-name {
             font-weight: 600;
+            white-space: nowrap;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .league-btn-preview-points {
             font-size: 0.78em;
             font-weight: 600;
             color: var(--muted);
+        }
+
+        .league-btn-sub {
+            white-space: nowrap;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .league-btn.active .league-btn-sub {
+            color: #e1d4ff;
         }
 
         .league-btn-points {
@@ -551,7 +566,7 @@
                                  alt="" width="28" height="28" loading="lazy" onerror="this.style.visibility='hidden'">
                         </span>
                         <span class="league-btn-text">
-                        <span class="league-btn-name">{{ league_info.name }}</span>
+                        <span class="league-btn-name" title="{{ league_info.name }}">{{ league_info.name }}</span>
                         {% if selected_league == league_id %}
                             {% set league_points = league_summary if league_summary else {} %}
                             {% if league_points and league_points.total != '-' %}
@@ -581,7 +596,8 @@
                                      alt="" width="28" height="28" loading="lazy" onerror="this.style.visibility='hidden'">
                             </span>
                             <span class="league-btn-text">
-                                <span class="league-btn-name">{{ league_info.name }}</span>
+                                <span class="league-btn-name" title="{{ league_info.name }}">{{ league_info.country }}</span>
+                                <span class="league-btn-preview-points league-btn-sub" title="{{ league_info.name }}">{{ league_info.league_name }}</span>
                             </span>
                         </a>
                         {% endfor %}
@@ -675,47 +691,78 @@
     </div>
     {% block scripts %}
     <script>
+        const selector = document.querySelector('.league-selector');
+        const SCROLL_KEY = 'leagueMenuScroll';
+        const OTHERS_KEY = 'otherLeaguesRequested';
         const loadOtherButton = document.getElementById('load-other-leagues');
-        if (loadOtherButton) {
-            const statusEl = document.getElementById('other-leagues-status');
-            const container = document.getElementById('other-league-buttons');
-            loadOtherButton.addEventListener('click', async () => {
-                loadOtherButton.disabled = true;
-                statusEl.textContent = 'Loading…';
-                try {
-                    const response = await fetch('/api/other-leagues?season={{ season }}');
-                    const payload = await response.json();
-                    if (!response.ok) throw new Error(payload.error || response.statusText);
-                    payload.leagues.forEach(league => {
-                        const link = document.createElement('a');
-                        link.className = 'league-btn';
-                        link.href = `/league/${league.league_id}?season={{ season }}`;
-                        const logo = document.createElement('span');
-                        logo.className = 'league-btn-logo';
-                        const img = document.createElement('img');
-                        img.src = `https://images.fotmob.com/image_resources/logo/leaguelogo/${league.id}.png`;
-                        img.alt = '';
-                        img.width = img.height = 28;
-                        img.loading = 'lazy';
-                        img.onerror = () => { img.style.visibility = 'hidden'; };
-                        logo.append(img);
-                        const text = document.createElement('span');
-                        text.className = 'league-btn-text';
-                        const name = document.createElement('span');
-                        name.className = 'league-btn-name';
-                        name.textContent = league.name;
-                        text.append(name);
-                        link.append(logo, text);
-                        container.append(link);
-                    });
-                    loadOtherButton.remove();
-                    statusEl.textContent = `${payload.leagues.length} more leagues loaded.`;
-                } catch (error) {
-                    loadOtherButton.disabled = false;
-                    loadOtherButton.textContent = 'Retry loading other leagues';
-                    statusEl.textContent = `Failed to load: ${error.message}`;
-                }
+        const statusEl = document.getElementById('other-leagues-status');
+        const container = document.getElementById('other-league-buttons');
+
+        async function loadOtherLeagues() {
+            loadOtherButton.disabled = true;
+            statusEl.textContent = 'Loading…';
+            try {
+                const response = await fetch('/api/other-leagues?season={{ season }}');
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || response.statusText);
+                payload.leagues.forEach(league => {
+                    const link = document.createElement('a');
+                    link.className = 'league-btn';
+                    link.href = `/league/${league.league_id}?season={{ season }}`;
+                    const logo = document.createElement('span');
+                    logo.className = 'league-btn-logo';
+                    const img = document.createElement('img');
+                    img.src = `https://images.fotmob.com/image_resources/logo/leaguelogo/${league.id}.png`;
+                    img.alt = '';
+                    img.width = img.height = 28;
+                    img.loading = 'lazy';
+                    img.onerror = () => { img.style.visibility = 'hidden'; };
+                    logo.append(img);
+                    const text = document.createElement('span');
+                    text.className = 'league-btn-text';
+                    const name = document.createElement('span');
+                    name.className = 'league-btn-name';
+                    name.title = league.name;
+                    name.textContent = league.country;
+                    const sub = document.createElement('span');
+                    sub.className = 'league-btn-preview-points league-btn-sub';
+                    sub.title = league.name;
+                    sub.textContent = league.league_name;
+                    text.append(name, sub);
+                    link.append(logo, text);
+                    container.append(link);
+                });
+                loadOtherButton.remove();
+                statusEl.textContent = `${payload.leagues.length} more leagues loaded.`;
+                return true;
+            } catch (error) {
+                loadOtherButton.disabled = false;
+                loadOtherButton.textContent = 'Retry loading other leagues';
+                statusEl.textContent = `Failed to load: ${error.message}`;
+                return false;
+            }
+        }
+
+        // Keep the menu where it was after opening a league: the page reloads, so remember the scroll position
+        // (and that the user asked for the other leagues, which are then loaded again before scrolling)
+        async function restoreMenu() {
+            const requested = sessionStorage.getItem(OTHERS_KEY) === '1';
+            if (loadOtherButton && requested) await loadOtherLeagues();
+            const saved = Number(sessionStorage.getItem(SCROLL_KEY));
+            if (saved) selector.scrollTop = saved;
+        }
+
+        if (selector) {
+            selector.addEventListener('click', event => {
+                if (event.target.closest('.league-btn')) sessionStorage.setItem(SCROLL_KEY, selector.scrollTop);
             });
+            if (container.children.length) sessionStorage.setItem(OTHERS_KEY, '1');
+            if (loadOtherButton) {
+                loadOtherButton.addEventListener('click', async () => {
+                    if (await loadOtherLeagues()) sessionStorage.setItem(OTHERS_KEY, '1');
+                });
+            }
+            restoreMenu();
         }
     </script>
     {% endblock %}

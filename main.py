@@ -485,7 +485,8 @@ def get_other_leagues(season_year=BASE_YEAR):
         league = top_leagues.get(FOTMOB_COUNTRY_ALIASES.get(country, country))
         if league:
             leagues[str(league['id'])] = {
-                'name': f"{country}: {league['name']}", 'id': league['id'], 'country': country
+                'name': f"{country}: {league['name']}", 'id': league['id'], 'country': country,
+                'league_name': league['name'],
             }
     return leagues
 
