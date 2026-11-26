@@ -159,6 +159,32 @@
             gap: 6px;
         }
 
+        .league-search {
+            width: 100%;
+            padding: 9px 12px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.9em;
+            color: var(--text);
+            background: var(--surface);
+        }
+
+        .league-search:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .league-btn[hidden] {
+            display: none;
+        }
+
+        .league-search-empty {
+            margin-top: 8px;
+            font-size: 0.85em;
+            color: var(--muted);
+        }
+
         .league-btn {
             padding: 12px 14px;
             border: 1px solid transparent;
@@ -556,7 +582,8 @@
         {% block content %}
         <div class="content-layout">
             <div class="league-selector">
-                <h3>📊 Select a League</h3>
+                <input type="search" class="league-search" id="league-search" placeholder="Search leagues…"
+                       aria-label="Search leagues" autocomplete="off">
                 <div class="league-buttons">
                     {% for league_id, league_info in leagues.items() %}
                     <a href="/league/{{ league_id }}?season={{ season }}"
@@ -607,6 +634,7 @@
                     <div class="other-leagues-status" id="other-leagues-status">Top divisions of the remaining UEFA federations, loaded only on request.</div>
                     {% endif %}
                 </div>
+                <div class="league-search-empty" id="league-search-empty" hidden>No leagues found.</div>
             </div>
 
             <div class="table-panel">
@@ -697,6 +725,20 @@
         const loadOtherButton = document.getElementById('load-other-leagues');
         const statusEl = document.getElementById('other-leagues-status');
         const container = document.getElementById('other-league-buttons');
+        const searchInput = document.getElementById('league-search');
+        const searchEmpty = document.getElementById('league-search-empty');
+
+        // Also applied to other leagues after they are loaded, so the filter covers them too
+        function filterLeagues() {
+            const query = searchInput.value.trim().toLowerCase();
+            let visible = 0;
+            selector.querySelectorAll('.league-btn').forEach(link => {
+                const text = `${link.textContent} ${link.querySelector('[title]')?.title || ''}`.toLowerCase();
+                link.hidden = !text.includes(query);
+                if (!link.hidden) visible++;
+            });
+            searchEmpty.hidden = visible > 0;
+        }
 
         async function loadOtherLeagues() {
             loadOtherButton.disabled = true;
@@ -734,6 +776,7 @@
                 });
                 loadOtherButton.remove();
                 statusEl.textContent = `${payload.leagues.length} more leagues loaded.`;
+                filterLeagues();
                 return true;
             } catch (error) {
                 loadOtherButton.disabled = false;
@@ -756,6 +799,7 @@
             selector.addEventListener('click', event => {
                 if (event.target.closest('.league-btn')) sessionStorage.setItem(SCROLL_KEY, selector.scrollTop);
             });
+            searchInput.addEventListener('input', filterLeagues);
             if (container.children.length) sessionStorage.setItem(OTHERS_KEY, '1');
             if (loadOtherButton) {
                 loadOtherButton.addEventListener('click', async () => {
